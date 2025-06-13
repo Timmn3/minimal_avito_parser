@@ -1,5 +1,4 @@
-# bot/database/models.py
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, ForeignKey, BigInteger
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
 
@@ -8,7 +7,7 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = 'users'
 
-    id = Column(Integer, primary_key=True)  # Telegram ID
+    id = Column(BigInteger, primary_key=True)
     username = Column(String)
     first_name = Column(String)
     last_name = Column(String)
@@ -21,7 +20,7 @@ class Task(Base):
     __tablename__ = 'tasks'
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
+    user_id = Column(BigInteger, ForeignKey('users.id'))
     number = Column(Integer)  # номер задачи (1, 2, 3...)
     teg = Column(String)
     url = Column(String)

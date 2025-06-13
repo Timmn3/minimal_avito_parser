@@ -1,14 +1,14 @@
-# util/parser_avito.py
 import time
 from bs4 import BeautifulSoup
 from loguru import logger
-from util.selenium_utils import setup_driver
+
+from parsing.util.selenium_utils import setup_driver
 from services.notification_service import notify_users_about_new_ad
 
 # === Настройки ===
 seen_ads = {}  # Храним все уникальные объявления
 
-async def parse_avito(task, config, bot=None):
+async def parse_avito(task, config, bot):
     base_url = task['url']
     pages = ['', '&p=2', '&p=3', '&p=4', '&p=5'][:task['count_page']]
     time_repeat = task['time_repeat']
@@ -19,9 +19,6 @@ async def parse_avito(task, config, bot=None):
         stop_words = ["stop_words"]
 
     max_ads_per_run = task.get("max_ads_per_run", 30)  # Лимит вывода новых объявлений (верхних на странице) за цикл
-    name_class = config.get("name")
-    announcement_text_class = config.get("announcement_text")
-    price_class = config.get("price")
 
     driver = setup_driver()
     global seen_ads
@@ -42,6 +39,10 @@ async def parse_avito(task, config, bot=None):
                     ad = soup.find_all(class_='iva-item-root-XBsVL')
 
                     for item in ad[:max_ads_per_run]:
+                        if not item:
+                            logger.warning("Пустой элемент объявления, пропускаем.")
+                            continue
+
                         try:
                             item_id = item.get('data-item-id')
                         except Exception as e:
@@ -55,34 +56,39 @@ async def parse_avito(task, config, bot=None):
                             else:
                                 link = link_tag.get('href')
                                 if link and link.startswith('/'):
-                                    link = 'https://www.avito.ru'  + link
+                                    link = 'https://www.avito.ru' + link
                         except Exception as e:
                             link = None
                             logger.warning(f'Нет ссылки: {e}')
 
                         try:
-                            name = item.find(class_=name_class).text.strip() if name_class else ''
-                        except Exception:
+                            name_tag = item.find('a', {'data-marker': 'item-title'})
+                            name = name_tag.text.strip() if name_tag else ''
+                        except Exception as e:
                             name = ''
+                            logger.exception(f'Ошибка при извлечении названия: {e}')
 
                         try:
-                            price = item.find(class_=price_class).text.strip() if price_class else ''
-                        except Exception:
+                            price_tag = item.find('meta', {'itemprop': 'price'})
+                            price = price_tag.get('content') if price_tag else ''
+                        except Exception as e:
                             price = ''
+                            logger.exception(f'Ошибка при извлечении цены: {e}')
 
                         try:
-                            announcement_tag = item.find(class_=announcement_text_class)
-                            announcement_text = announcement_tag.text.strip() if announcement_tag else ''
-                            first_line = announcement_text.splitlines()[0] if announcement_text else ''
-                        except Exception:
+                            description_tag = item.find('meta', {'itemprop': 'description'})
+                            announcement_text = description_tag.get('content') if description_tag else ''
+                        except Exception as e:
                             announcement_text = ''
+                            logger.exception(f'Ошибка при извлечении описания: {e}')
 
                         try:
                             text = f"{name} {announcement_text}"
                         except Exception:
                             text = ''
 
-                        has_target = any(word.lower() in text.lower() for word in target_words) if target_words else True
+                        has_target = any(
+                            word.lower() in text.lower() for word in target_words) if target_words else True
                         has_stop = any(word.lower() in text.lower() for word in stop_words) if stop_words else False
 
                         if has_target and not has_stop and link:
@@ -90,27 +96,23 @@ async def parse_avito(task, config, bot=None):
                                 logger.info(f"[{teg}] Новое объявление: {link}")
                                 seen_ads[item_id] = (name, price, link)
 
-                                # Если есть бот — отправляем уведомление
-                                if bot:
-                                    from database.db import get_users_by_task_teg
-                                    users = await get_users_by_task_teg(teg)
-                                    await notify_users_about_new_ad(bot, users, {
-                                        'teg': teg,
-                                        'title': name,
-                                        'price': price,
-                                        'link': link
-                                    })
+                                from database.db import get_users_by_task_teg
+                                users = await get_users_by_task_teg(teg)
+                                await notify_users_about_new_ad(bot, users, {
+                                    'teg': teg,
+                                    'title': name,
+                                    'price': price,
+                                    'link': link
+                                })
 
                                 new_ads_found = True
-
-                    time.sleep(task['time_repeat'])
 
                 except Exception as e:
                     logger.error(f"Ошибка при обработке {url}: {e}")
                     time.sleep(10)
 
             if not new_ads_found:
-                logger.info(f"[{teg}] Новых объявлений нет.")
+                logger.debug(f"[{teg}] Новых объявлений нет.")
 
     finally:
         driver.quit()

@@ -1,4 +1,3 @@
-# bot/keyboards/inline.py
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -7,6 +6,13 @@ def get_main_menu_keyboard():
     builder.row(
         InlineKeyboardButton(text="📋 Мои задачи", callback_data="my_tasks"),
         InlineKeyboardButton(text="➕ Добавить задачу", callback_data="add_task")
+    )
+    builder.row(
+        InlineKeyboardButton(text="📢 Новые объявления", callback_data="view_ads")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⚙️ Настройки", callback_data="settings"),
+        InlineKeyboardButton(text="❓ Помощь", callback_data="help")
     )
     return builder.as_markup()
 

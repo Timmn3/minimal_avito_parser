@@ -1,5 +1,0 @@
-{
-  "name": "styles-module-root-cfrVG styles-module-root_underlineOffset_size-m-ce9r8 styles-module-root_noVisited-U4swI styles-module-root_preset_black-VfJP4",
-  "announcement_text": "styles-module-root-PY1ie styles-module-size_m-w6vzl styles-module-size_m_dense-HvBLt styles-module-size_m_compensated-a0qNK styles-module-size_m-DKJW6 styles-module-ellipsis-HCaiF styles-module-size_dense-u0sRJ stylesMarningNormal-module-root-OE0X2 stylesMarningNormal-module-paragraph-m-dense-mYuSK styles-module-noAccent-nSgNq styles-module-root_bottom-hgeJ2 styles-module-margin-bottom_4-OpB5i",
-  "price": "styles-module-size_l-kPWfk styles-module-size_l_dense-kvYNM"
-}

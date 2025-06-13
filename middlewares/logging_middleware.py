@@ -1,4 +1,3 @@
-# bot/middlewares/logging_middleware.py
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, User
 from loguru import logger

@@ -1,10 +1,10 @@
-# bot/database/db.py
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.future import select
 from config import DATABASE_URL
 from database.models import Base, User, Task
 from database.session import get_session
+
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -35,9 +35,22 @@ async def add_task(session, task_data):
 async def update_task(session, task_id, update_data):
     result = await session.execute(select(Task).where(Task.id == task_id))
     task = result.scalars().first()
+
+    if not task:
+        print(f"[DEBUG] Задача с ID {task_id} не найдена. Создаем новую...")
+        user_id = update_data.get('user_id')
+        if not user_id:
+            return None
+        task = Task(id=task_id, user_id=user_id)
+        session.add(task)
+
     for key, value in update_data.items():
-        setattr(task, key, value)
+        if value is not None:
+            setattr(task, key, value)
+
     await session.flush()
+    await session.commit()
+    print(f"[DEBUG] Задача {task_id} обновлена/создана: {update_data}")
     return task
 
 async def get_users_by_task(session, teg: str):

@@ -1,4 +1,3 @@
-# bot/database/init_db.py
 from database.models import Base
 from database.session import engine
 
