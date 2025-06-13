@@ -12,12 +12,12 @@ async def main():
     page_config = load_page_config()
 
     # Создаем список задач
-    parsers = [parse_avito(task, page_config) for task in tasks if task['activity']]
+    # parsers = [parse_avito(task, page_config) for task in tasks if task['activity']]
 
-    logger.info(f"Запускается {len(parsers)} активных задач")
+    logger.info(f"Запускается  активных задач")
 
     # Параллельный запуск
-    await asyncio.gather(*parsers)
+    # await asyncio.gather(*parsers)
 
 
 if __name__ == "__main__":
