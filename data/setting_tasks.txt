@@ -23,7 +23,7 @@
             "target_words": ["барный"],
             "stop_words": [""],
             "max_ads_per_run": 5,
-            "activity": false,
+            "activity": true,
             "number": 2,
             "price_change": false,
             "all_ads": true
@@ -38,7 +38,7 @@
             "target_words": ["компьютерное", "офисное", "икея", "икеа", "ikea"],
             "stop_words": ["стол", "стул"],
             "max_ads_per_run": 5,
-            "activity": false,
+            "activity": true,
             "number": 3,
             "price_change": false,
             "all_ads": false

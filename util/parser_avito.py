@@ -8,7 +8,7 @@ seen_ads = {}  # Храним все уникальные объявления
 
 
 
-def parse_avito(task, config):
+async def parse_avito(task, config):
     base_url = task['url']
     pages = ['', '&p=2', '&p=3', '&p=4', '&p=5'][:task['count_page']]
     time_repeat = task['time_repeat']
