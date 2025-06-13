@@ -1,7 +1,7 @@
 import json
 import os
 
-PATH = './data/'  # текущая директория
+PATH = 'parsing/data/'  # текущая директория
 USER_AGENT_FILE = os.path.join(PATH, 'user-agent-database.txt')
 TASKS_FILE = os.path.join(PATH, 'setting_tasks.txt')
 PAGE_CONFIG_FILE = os.path.join(PATH, 'page_configuration.txt')

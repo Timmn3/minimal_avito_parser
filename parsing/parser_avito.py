@@ -1,7 +1,7 @@
 import time
 from bs4 import BeautifulSoup
 from loguru import logger
-from util.selenium_utils import setup_driver
+from parsing.util.selenium_utils import setup_driver
 
 # === Настройки ===
 seen_ads = {}  # Храним все уникальные объявления
