@@ -4,7 +4,7 @@ from loguru import logger
 
 from util.parser_avito import parse_avito
 
-logger.add("parser.log", rotation="50 MB", level="INFO")
+logger.add("logs/loguru", rotation="50 MB", level="INFO")
 
 
 async def main():

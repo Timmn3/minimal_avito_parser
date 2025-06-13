@@ -2,9 +2,6 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
-from loader import USER_AGENT_FILE
-
-
 def setup_driver():
     options = Options()
     options.add_argument('--disable-blink-features=AutomationControlled')
