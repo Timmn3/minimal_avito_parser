@@ -1,14 +1,14 @@
+# util/parser_avito.py
 import time
 from bs4 import BeautifulSoup
 from loguru import logger
-from parsing.util.selenium_utils import setup_driver
+from util.selenium_utils import setup_driver
+from services.notification_service import notify_users_about_new_ad
 
 # === Настройки ===
 seen_ads = {}  # Храним все уникальные объявления
 
-
-
-async def parse_avito(task, config):
+async def parse_avito(task, config, bot=None):
     base_url = task['url']
     pages = ['', '&p=2', '&p=3', '&p=4', '&p=5'][:task['count_page']]
     time_repeat = task['time_repeat']
@@ -19,17 +19,16 @@ async def parse_avito(task, config):
         stop_words = ["stop_words"]
 
     max_ads_per_run = task.get("max_ads_per_run", 30)  # Лимит вывода новых объявлений (верхних на странице) за цикл
-
     name_class = config.get("name")
     announcement_text_class = config.get("announcement_text")
     price_class = config.get("price")
+
     driver = setup_driver()
-    # Глобальная переменная для хранения всех найденных объявлений
     global seen_ads
 
     try:
         while True:
-            new_ads_found = False  # Флаг для проверки наличия новых объявлений
+            new_ads_found = False
             current_ads = set()
 
             for page in pages:
@@ -56,7 +55,7 @@ async def parse_avito(task, config):
                             else:
                                 link = link_tag.get('href')
                                 if link and link.startswith('/'):
-                                    link = 'https://www.avito.ru'    + link
+                                    link = 'https://www.avito.ru'  + link
                         except Exception as e:
                             link = None
                             logger.warning(f'Нет ссылки: {e}')
@@ -90,11 +89,19 @@ async def parse_avito(task, config):
                             if item_id not in seen_ads:
                                 logger.info(f"[{teg}] Новое объявление: {link}")
                                 seen_ads[item_id] = (name, price, link)
-                                current_ads.add(link)
+
+                                # Если есть бот — отправляем уведомление
+                                if bot:
+                                    from database.db import get_users_by_task_teg
+                                    users = await get_users_by_task_teg(teg)
+                                    await notify_users_about_new_ad(bot, users, {
+                                        'teg': teg,
+                                        'title': name,
+                                        'price': price,
+                                        'link': link
+                                    })
+
                                 new_ads_found = True
-                            else:
-                                # Объявление уже было
-                                pass
 
                     time.sleep(task['time_repeat'])
 
@@ -104,5 +111,6 @@ async def parse_avito(task, config):
 
             if not new_ads_found:
                 logger.info(f"[{teg}] Новых объявлений нет.")
+
     finally:
         driver.quit()
