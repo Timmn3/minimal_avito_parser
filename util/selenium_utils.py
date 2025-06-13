@@ -2,6 +2,9 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
+from loader import USER_AGENT_FILE
+
+
 def setup_driver():
     options = Options()
     options.add_argument('--disable-blink-features=AutomationControlled')
@@ -9,4 +12,5 @@ def setup_driver():
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.page_load_strategy = 'none'
+    # options.add_argument(f'user-agent={USER_AGENT_FILE}')
     return webdriver.Chrome(options=options)
