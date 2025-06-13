@@ -4,7 +4,7 @@ from loader import load_tasks, load_page_config
 from loguru import logger
 from util.parser_avito import parse_avito
 
-logger.add("logs/loguru", rotation="50 MB", level="INFO")
+logger.add("logs/loguru.log", rotation="50 MB", level="INFO")
 
 
 def kill_chrome_processes():
