@@ -1,14 +1,15 @@
 import time
 from bs4 import BeautifulSoup
 from loguru import logger
-
 from parsing.util.selenium_utils import setup_driver
 from services.notification_service import notify_users_about_new_ad
-
 from database.db import seen_ad_exists, add_seen_ad
+from database.db import async_session
+from sqlalchemy import select
+from database.models import Task
 
 
-async def parse_avito(task, config, bot):
+async def parse_avito(task, bot):
     base_url = task['url']
     pages = ['', '&p=2', '&p=3', '&p=4', '&p=5'][:task['count_page']]
     time_repeat = task['time_repeat']
@@ -24,6 +25,15 @@ async def parse_avito(task, config, bot):
 
     try:
         while True:
+
+            # Проверка активности задачи
+            async with async_session() as session:
+                result = await session.execute(select(Task.activity).where(Task.id == task['id']))
+                is_active = result.scalar()
+                if not is_active:
+                    logger.info(f"[{teg}] Задача остановлена пользователем. Парсер завершает работу.")
+                    break
+
             new_ads_found = False
 
             for page in pages:
@@ -95,8 +105,8 @@ async def parse_avito(task, config, bot):
                     time.sleep(10)
 
             if not new_ads_found:
-                pass
-                # logger.debug(f"[{teg}] There are no new announcement.")
+
+                logger.debug(f"[{teg}] There are no new announcement.")
 
     finally:
         driver.quit()

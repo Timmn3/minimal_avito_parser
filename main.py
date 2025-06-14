@@ -35,7 +35,7 @@ def run_parser():
         logger.info(f"Запускается {len(tasks)} активных задач парсинга")
 
         bot = ParserBot(token=BOT_TOKEN)
-        parsers = [parse_avito(task, {}, bot) for task in tasks if task['activity']]
+        parsers = [parse_avito(task, bot) for task in tasks if task['activity']]
         await asyncio.gather(*parsers)
 
     asyncio.run(parser_main())

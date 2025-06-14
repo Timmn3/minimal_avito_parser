@@ -32,6 +32,7 @@ def kill_chrome_processes():
                 return []
 
         if os_name == "Windows":
+            return
             chrome_pids = get_win_pids("chrome.exe")
             driver_pids = get_win_pids("chromedriver.exe")
 
