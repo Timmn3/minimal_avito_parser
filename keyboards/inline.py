@@ -35,7 +35,7 @@ def get_cancel():
         [InlineKeyboardButton(text="✖️ Отменить", callback_data="main_menu")]
     ])
 
-def get_ok():
+def run_task(task_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Ok", callback_data="main_menu")]
+        [InlineKeyboardButton(text="🚀 Запустить задачу", callback_data=f"run_task_{task_id}")]
     ])

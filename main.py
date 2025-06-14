@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher
 from loguru import logger
 from config import BOT_TOKEN, ADMIN_IDS
 from database.init_db import init_db
-from services.task_manager import TaskManager  # Новый импорт
+from services.task_manager import TaskManager
 from handlers.start import router as start_router
 from handlers.menu import router as menu_router
 from handlers.tasks import router as tasks_router

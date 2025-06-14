@@ -26,7 +26,6 @@ async def parse_avito(task, bot):
     try:
         while True:
 
-            # Проверка активности задачи
             async with async_session() as session:
                 result = await session.execute(select(Task.activity).where(Task.id == task['id']))
                 is_active = result.scalar()
@@ -70,10 +69,13 @@ async def parse_avito(task, bot):
                         description_tag = item.find('meta', {'itemprop': 'description'})
                         announcement_text = description_tag.get('content') if description_tag else ''
 
+                        # Новое: получение даты публикации
+                        date_tag = item.find('p', {'data-marker': 'item-date'})
+                        date_posted = date_tag.text.strip() if date_tag else ''
+
                         text = f"{name} {announcement_text}"
 
-                        has_target = any(
-                            word.lower() in text.lower() for word in target_words) if target_words else True
+                        has_target = any(word.lower() in text.lower() for word in target_words) if target_words else True
                         has_stop = any(word.lower() in text.lower() for word in stop_words) if stop_words else False
 
                         if has_target and not has_stop and link:
@@ -86,7 +88,7 @@ async def parse_avito(task, bot):
                                     item_id=item_id,
                                     name=name,
                                     price=price,
-                                    link=link
+                                    link=link,
                                 )
 
                                 from database.db import get_users_by_task_teg
@@ -95,7 +97,8 @@ async def parse_avito(task, bot):
                                     'teg': teg,
                                     'title': name,
                                     'price': price,
-                                    'link': link
+                                    'link': link,
+                                    'date': date_posted
                                 })
 
                                 new_ads_found = True
@@ -105,7 +108,6 @@ async def parse_avito(task, bot):
                     time.sleep(10)
 
             if not new_ads_found:
-
                 logger.debug(f"[{teg}] There are no new announcement.")
 
     finally:
