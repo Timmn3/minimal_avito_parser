@@ -1,4 +1,5 @@
 from aiogram import Router, F
+from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -370,3 +371,76 @@ async def skip_max_ads(call: CallbackQuery, state: FSMContext):
 
     await call.message.edit_text("✅ Задача успешно обновлена!", reply_markup=get_ok())
     await state.clear()
+
+
+async def build_tasks_keyboard(user_id: int) -> tuple[InlineKeyboardMarkup, bool]:
+    """
+    Создает клавиатуру с задачами пользователя.
+    Возвращает кортеж (клавиатура, есть_ли_задачи)
+    """
+    async with async_session() as session:
+        tasks = await get_user_tasks(session, user_id)
+        sorted_tasks = sorted(tasks, key=lambda x: x.number)
+
+    if not sorted_tasks:
+        return None, False
+
+    builder = InlineKeyboardBuilder()
+    for task in sorted_tasks:
+        status = "✅" if task.activity else "❌"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"#{task.number} {task.teg} {status}",
+                callback_data=f"toggle_task_{task.id}"
+            )
+        )
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="main_menu"))
+
+    return builder.as_markup(), True
+
+
+@router.message(Command("tasks"))
+@router.message(lambda msg: msg.text == "Запуск задач")
+async def manage_tasks_activity(message: Message):
+    keyboard, has_tasks = await build_tasks_keyboard(message.from_user.id)
+
+    if not has_tasks:
+        await message.answer("У вас нет задач.", reply_markup=get_back_button())
+        return
+
+    await message.answer(
+        "Управление активностью задач:",
+        reply_markup=keyboard
+    )
+
+
+@router.callback_query(lambda call: call.data.startswith("toggle_task_"))
+async def toggle_task_activity(call: CallbackQuery):
+    task_id = int(call.data.split("_")[2])
+    user_id = call.from_user.id
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(Task).where(Task.id == task_id, Task.user_id == user_id)
+        )
+        task = result.scalars().first()
+
+        if not task:
+            await call.answer("Задача не найдена!", show_alert=True)
+            return
+
+        # Меняем состояние активности
+        new_status = not task.activity
+        task.activity = new_status
+        await session.commit()
+
+        # Формируем текст для всплывающего уведомления
+        status_text = "включена" if new_status else "выключена"
+        notification_text = f"Задача {task.teg} {status_text}"
+
+        # Отправляем всплывающее уведомление (исчезнет автоматически через 1.5 сек)
+        await call.answer(notification_text, show_alert=False)
+
+        # Обновляем клавиатуру
+        keyboard, _ = await build_tasks_keyboard(user_id)
+        await call.message.edit_reply_markup(reply_markup=keyboard)
