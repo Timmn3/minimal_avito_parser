@@ -19,7 +19,8 @@ def kill_chrome_processes():
                     cmd,
                     stderr=subprocess.DEVNULL,
                     shell=True,
-                    encoding='utf-8'
+                    encoding='utf-8',
+                    errors='ignore'
                 )
                 pids = []
                 for line in result.splitlines():

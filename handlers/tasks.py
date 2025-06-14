@@ -191,4 +191,5 @@ async def process_all_ads(message: Message, state: FSMContext):
 @router.callback_query(lambda call: call.data == "add_task")
 async def start_add_task(call: CallbackQuery, state: FSMContext):
     await state.set_state(TaskForm.number)
-    await call.message.edit_text("Введите значение для поля <b>номер задачи</b>:", parse_mode="HTML")
+    await call.message.edit_text("Введите значение для поля <b>номер задачи</b>:", parse_mode="HTML"
+                                 , reply_markup=get_back_button())

@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.future import select
 from config import DATABASE_URL
-from database.models import Base, User, Task
+from database.models import Base, User, Task, SeenAd
 from database.session import get_session
 
 
@@ -71,3 +71,24 @@ async def get_users_by_task_teg(teg: str):
             select(User).join(Task).where(Task.teg == teg)
         )
         return result.scalars().all()
+
+async def seen_ad_exists(task_id: int, item_id: str):
+    async with get_session() as session:
+        result = await session.execute(
+            select(SeenAd).where(SeenAd.task_id == task_id, SeenAd.item_id == item_id)
+        )
+        return result.scalars().first() is not None
+
+
+async def add_seen_ad(task_id: int, user_id: int, item_id: str, name: str, price: str, link: str):
+    async with get_session() as session:
+        seen_ad = SeenAd(
+            task_id=task_id,
+            user_id=user_id,
+            item_id=item_id,
+            name=name,
+            price=price,
+            link=link
+        )
+        session.add(seen_ad)
+        await session.commit()

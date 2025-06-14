@@ -15,6 +15,24 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     tasks = relationship("Task", back_populates="owner")
+    seen_ads = relationship("SeenAd", back_populates="user")  # Новое отношение
+
+
+
+class SeenAd(Base):
+    __tablename__ = 'seen_ads'
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey('tasks.id'), nullable=False)
+    user_id = Column(BigInteger, ForeignKey('users.id'), nullable=False)  # Новое поле связи
+    item_id = Column(String, nullable=False, index=True)
+    name = Column(String)
+    price = Column(String)
+    link = Column(String)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    task = relationship("Task", back_populates="seen_ads")
+    user = relationship("User", back_populates="seen_ads")  # Новое отношение
 
 class Task(Base):
     __tablename__ = 'tasks'
@@ -33,5 +51,6 @@ class Task(Base):
     price_change = Column(Boolean)
     all_ads = Column(Boolean)
     created_at = Column(DateTime, default=datetime.utcnow)
-
     owner = relationship("User", back_populates="tasks")
+    seen_ads = relationship("SeenAd", order_by=SeenAd.timestamp.desc(), back_populates="task")
+
