@@ -108,7 +108,7 @@ async def parse_avito(task, bot):
                     time.sleep(10)
 
             if not new_ads_found:
-                logger.debug(f"[{teg}] There are no new announcement.")
+                logger.info(f"[{teg}] There are no new announcement.")
 
     finally:
         driver.quit()
