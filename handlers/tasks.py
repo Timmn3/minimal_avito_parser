@@ -318,15 +318,21 @@ async def skip_time_repeat(call: CallbackQuery, state: FSMContext):
     async with async_session() as session:
         result = await session.execute(select(Task).where(Task.id == task_id))
         task = result.scalars().first()
-        # Сохраняем текущее значение time_repeat из БД
-        await state.update_data(time_repeat=task.time_repeat)
+
+        if task is not None:
+            time_repeat = task.time_repeat
+        else:
+            time_repeat = 60  # Значение по умолчанию
+
+        await state.update_data(time_repeat=time_repeat)
+        await state.update_data(count_page=1)
 
     await call.message.edit_text(
-        "Введите новое значение для поля <b>количество страниц</b>:",
+        "Введите лимит количества объявлений за цикл (максимум 50):",
         parse_mode="HTML",
         reply_markup=skip_keyboard()
     )
-    await state.set_state(TaskForm.count_page)
+    await state.set_state(TaskForm.max_ads_per_run)
 
 
 # === Лимит объявлений ===
@@ -370,15 +376,20 @@ async def skip_max_ads(call: CallbackQuery, state: FSMContext):
     async with async_session() as session:
         result = await session.execute(select(Task).where(Task.id == task_id))
         task = result.scalars().first()
-        # Сохраняем текущее значение max_ads_per_run из БД
-        await state.update_data(max_ads_per_run=task.max_ads_per_run)
 
-        # Обновляем задачу в БД
+        if task is not None:
+            max_ads_per_run = task.max_ads_per_run
+        else:
+            max_ads_per_run = 10  # Значение по умолчанию
+
+        await state.update_data(max_ads_per_run=max_ads_per_run)
+
+        # Сохраняем обновления
         update_data = {
             'activity': data.get('activity', False),
             'price_change': data.get('price_change', False),
             'all_ads': data.get('all_ads', False),
-            'max_ads_per_run': task.max_ads_per_run
+            'max_ads_per_run': max_ads_per_run
         }
         await update_task(session, task_id, {**data, **update_data})
 
