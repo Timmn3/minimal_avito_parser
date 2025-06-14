@@ -75,3 +75,5 @@ if __name__ == "__main__":
         await asyncio.gather(parser_task, bot_task)
 
     asyncio.run(run_all())
+
+    # git push server master

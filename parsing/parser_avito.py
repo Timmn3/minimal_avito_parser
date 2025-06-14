@@ -93,7 +93,7 @@ async def parse_avito(task, config, bot):
 
                         if has_target and not has_stop and link:
                             if item_id not in seen_ads:
-                                logger.info(f"[{teg}] Новое объявление: {link}")
+                                # logger.info(f"[{teg}] Новое объявление: {link}")
                                 seen_ads[item_id] = (name, price, link)
 
                                 from database.db import get_users_by_task_teg
@@ -112,7 +112,8 @@ async def parse_avito(task, config, bot):
                     time.sleep(10)
 
             if not new_ads_found:
-                logger.debug(f"[{teg}] Новых объявлений нет.")
+                pass
+                # logger.debug(f"[{teg}] Новых объявлений нет.")
 
     finally:
         driver.quit()
