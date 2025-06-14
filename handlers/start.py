@@ -7,6 +7,8 @@ from database.models import User
 from keyboards.inline import get_main_menu_keyboard
 from sqlalchemy import select
 
+from keyboards.reply import get_menu_keyboard
+
 router = Router()
 
 @router.message(lambda msg: msg.text == "/start")
@@ -32,14 +34,10 @@ async def cmd_start(message: Message):
                 user = existing_user
                 is_new_user = False
 
-    logger.info(f"[User {user.id}] Пользователь начал взаимодействие с ботом")
+    # logger.info(f"[User {user.id}] Пользователь начал взаимодействие с ботом")
 
-    if user.is_admin:
-        await message.answer("🤖 Главное меню администратора:")
-    else:
-        await message.answer("👋 Привет! Это главное меню:")
-
-    await message.answer("Выберите действие:", reply_markup=get_main_menu_keyboard())
+    await message.answer(f"👋 Привет <b>{message.from_user.username}!</b>", parse_mode="HTML",
+                         reply_markup=get_menu_keyboard())
 
     # Отправляем уведомление только если это новый пользователь
     if is_new_user:

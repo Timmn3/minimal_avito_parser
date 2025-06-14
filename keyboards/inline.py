@@ -8,10 +8,6 @@ def get_main_menu_keyboard():
         InlineKeyboardButton(text="➕ Добавить задачу", callback_data="add_task")
     )
     builder.row(
-        InlineKeyboardButton(text="📢 Новые объявления", callback_data="view_ads")
-    )
-    builder.row(
-        InlineKeyboardButton(text="⚙️ Настройки", callback_data="settings"),
         InlineKeyboardButton(text="❓ Помощь", callback_data="help")
     )
     return builder.as_markup()
@@ -23,10 +19,23 @@ def get_task_actions_keyboard(task_id=None):
             InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_task_{task_id}"),
             InlineKeyboardButton(text="🗑 Удалить", callback_data=f"delete_task_{task_id}")
         )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="main_menu"))
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к списку", callback_data="my_tasks"),
+        InlineKeyboardButton(text="↩️ Главное меню", callback_data="main_menu")
+    )
     return builder.as_markup()
 
 def get_back_button():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="main_menu")]
+    ])
+
+def get_cancel():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✖️ Отменить", callback_data="main_menu")]
+    ])
+
+def get_ok():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Ok", callback_data="main_menu")]
     ])
