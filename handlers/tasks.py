@@ -322,7 +322,7 @@ async def skip_time_repeat(call: CallbackQuery, state: FSMContext):
         if task is not None:
             time_repeat = task.time_repeat
         else:
-            time_repeat = 60  # Значение по умолчанию
+            time_repeat = 30  # Значение по умолчанию
 
         await state.update_data(time_repeat=time_repeat)
         await state.update_data(count_page=1)
