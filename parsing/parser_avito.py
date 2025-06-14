@@ -7,7 +7,7 @@ from database.db import seen_ad_exists, add_seen_ad
 from database.db import async_session
 from sqlalchemy import select
 from database.models import Task
-
+import asyncio
 
 async def parse_avito(task, bot):
     base_url = task['url']
@@ -40,7 +40,7 @@ async def parse_avito(task, bot):
                 url = base_url + page
                 try:
                     driver.get(url)
-                    time.sleep(time_repeat)
+                    await asyncio.sleep(time_repeat)
                     driver.execute_script("window.stop();")
 
                     soup = BeautifulSoup(driver.page_source, "html.parser")

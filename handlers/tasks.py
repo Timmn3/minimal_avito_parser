@@ -254,6 +254,9 @@ async def skip_url(call: CallbackQuery, state: FSMContext):
 async def process_time_repeat(message: Message, state: FSMContext):
     try:
         time_repeat = int(message.text)
+        if time_repeat < 5:
+            await message.answer("Минимальное значение — 5 секунд. Введите снова:")
+            return
         await state.update_data(time_repeat=time_repeat)
 
         await message.answer(
