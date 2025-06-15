@@ -14,27 +14,32 @@ from database.db import async_session, get_user_tasks, update_task
 router = Router()
 
 
+def format_price(price: int) -> str:
+    """Форматирует цену с разделителями тысяч (1 000)"""
+    if price is None:
+        return "не указана"
+    return f"{price:,}".replace(",", " ") + " ₽"
+
+
 # === Клавиатура для пропуска шага ===
 def skip_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➡️ Пропустить", callback_data="skip")]
-    ,
-    [InlineKeyboardButton(text="✖️ Отменить", callback_data="main_menu")]])
+        [InlineKeyboardButton(text="➡️ Пропустить", callback_data="skip")],
+        [InlineKeyboardButton(text="✖️ Отменить", callback_data="main_menu")]
+    ])
 
 
 # === Получение следующего доступного номера задачи ===
 async def get_next_task_number(user_id: int) -> int:
     async with async_session() as session:
-        # Получаем текущее количество задач пользователя
         result = await session.execute(
             select(func.count(Task.id)).where(Task.user_id == user_id)
         )
         count = result.scalar()
 
-        # Если задач меньше 5, возвращаем следующий номер
         if count < 5:
             return count + 1
-        return -1  # -1 означает, что лимит исчерпан
+        return -1
 
 
 # === Кнопка "Мои задачи" ===
@@ -43,14 +48,13 @@ async def show_user_tasks(call: CallbackQuery):
     user_id = call.from_user.id
     async with async_session() as session:
         tasks = await get_user_tasks(session, user_id)
-        sorted_tasks = sorted(tasks, key=lambda x: x.number)  # <-- сортировка
+        sorted_tasks = sorted(tasks, key=lambda x: x.number)
 
     if not sorted_tasks:
         await call.message.edit_text("У вас нет задач.", reply_markup=get_back_button())
         await call.answer()
         return
 
-    # Создаем клавиатуру с кнопками задач
     builder = InlineKeyboardBuilder()
     for task in sorted_tasks:
         builder.row(
@@ -68,8 +72,6 @@ async def show_user_tasks(call: CallbackQuery):
     await call.answer()
 
 
-
-# Добавьте новый обработчик для показа конкретной задачи
 @router.callback_query(lambda call: call.data.startswith("show_task_"))
 async def show_single_task(call: CallbackQuery):
     task_id = int(call.data.split("_")[2])
@@ -81,7 +83,7 @@ async def show_single_task(call: CallbackQuery):
         await call.answer("Задача не найдена!")
         return
 
-    await call.message.answer(
+    await call.message.edit_text(
         format_task(task),
         reply_markup=get_task_actions_keyboard(task.id)
     )
@@ -109,10 +111,9 @@ async def edit_task_start(call: CallbackQuery, state: FSMContext):
 
     await state.update_data(task_id=task_id, user_id=user_id, number=task.number)
 
-    # Проверяем, есть ли уже значение teg в БД
     reply_markup = skip_keyboard() if task.teg else get_cancel()
     await call.message.answer(
-        f"Текущий номер задачи: {task.number}\nВведите новое значение для поля <b>метка задачи (teg)</b>:",
+        f"Текущий номер задачи: {task.number}\nВведите <b>Имя задачи</b>:",
         parse_mode="HTML",
         reply_markup=reply_markup
     )
@@ -126,7 +127,6 @@ async def delete_task_handler(call: CallbackQuery):
     user_id = call.from_user.id
 
     async with async_session() as session:
-        # Проверяем, что задача принадлежит пользователю
         result = await session.execute(
             select(Task).where(Task.id == task_id, Task.user_id == user_id)
         )
@@ -136,12 +136,9 @@ async def delete_task_handler(call: CallbackQuery):
             await call.answer("Задача не найдена!", show_alert=True)
             return
 
-        # Удаляем связанные объявления
         await session.execute(
             sa.delete(SeenAd).where(SeenAd.task_id == task_id)
         )
-
-        # Удаляем задачу
         await session.delete(task)
         await session.commit()
 
@@ -154,7 +151,6 @@ async def delete_task_handler(call: CallbackQuery):
 async def start_add_task(call: CallbackQuery, state: FSMContext):
     user_id = call.from_user.id
 
-    # Проверяем лимит задач
     next_number = await get_next_task_number(user_id)
     if next_number == -1:
         await call.message.edit_text(
@@ -163,7 +159,6 @@ async def start_add_task(call: CallbackQuery, state: FSMContext):
         )
         return
 
-    # Создаем новую задачу с автоматическим номером
     async with async_session() as session:
         new_task = Task(user_id=user_id, number=next_number)
         session.add(new_task)
@@ -177,7 +172,7 @@ async def start_add_task(call: CallbackQuery, state: FSMContext):
         )
 
         await call.message.edit_text(
-            f"Создана новая задача №{next_number}\nВведите значение для поля <b>метка задачи (teg)</b>:",
+            f"Создана новая задача №{next_number}\nВведите <b>Имя задачи</b>:",
             parse_mode="HTML",
             reply_markup=get_cancel()
         )
@@ -195,30 +190,29 @@ async def process_teg(message: Message, state: FSMContext):
         result = await session.execute(select(Task).where(Task.id == task_id))
         task = result.scalars().first()
         if task is not None:
-            # Загружаем текущие данные из БД в состояние
             current_data = {
                 'url': task.url,
                 'time_repeat': task.time_repeat,
                 'count_page': task.count_page,
                 'target_words': task.target_words,
                 'stop_words': task.stop_words,
-                'max_ads_per_run': task.max_ads_per_run
+                'max_ads_per_run': task.max_ads_per_run,
+                'min_price': task.min_price,
+                'max_price': task.max_price
             }
             await state.update_data(**current_data)
-
             reply_markup = skip_keyboard()
         else:
             reply_markup = get_cancel()
 
     await message.answer(
-        "Введите новое значение для поля <b>URL</b>:",
+        "Введите <b>ссылку URL из браузера</b>:",
         parse_mode="HTML",
         reply_markup=reply_markup
     )
     await state.set_state(TaskForm.url)
 
 
-# Обработчик пропуска для teg
 @router.callback_query(lambda call: call.data == "skip", TaskForm.teg)
 async def skip_teg(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -228,16 +222,16 @@ async def skip_teg(call: CallbackQuery, state: FSMContext):
         result = await session.execute(select(Task).where(Task.id == task_id))
         task = result.scalars().first()
         if task is not None:
-            # Сохраняем текущее значение teg из БД
             await state.update_data(teg=task.teg)
-            # Загружаем остальные данные из БД
             current_data = {
                 'url': task.url,
                 'time_repeat': task.time_repeat,
                 'count_page': task.count_page,
                 'target_words': task.target_words,
                 'stop_words': task.stop_words,
-                'max_ads_per_run': task.max_ads_per_run
+                'max_ads_per_run': task.max_ads_per_run,
+                'min_price': task.min_price,
+                'max_price': task.max_price
             }
             await state.update_data(**current_data)
             reply_markup = skip_keyboard()
@@ -245,7 +239,7 @@ async def skip_teg(call: CallbackQuery, state: FSMContext):
             reply_markup = get_cancel()
 
     await call.message.edit_text(
-        "Введите новое значение для поля <b>URL</b>:",
+        "Введите <b>ссылку URL из браузера</b>:",
         parse_mode="HTML",
         reply_markup=reply_markup
     )
@@ -258,14 +252,13 @@ async def process_url(message: Message, state: FSMContext):
     await state.update_data(url=message.text)
 
     await message.answer(
-        "Введите новое значение для поля <b>время повторения (секунды)</b>:",
+        "Введите <b>интервал запросов на сайт (секунды)</b>:",
         parse_mode="HTML",
-        reply_markup=skip_keyboard()  # Всегда показываем кнопку пропуска для числовых полей
+        reply_markup=skip_keyboard()
     )
     await state.set_state(TaskForm.time_repeat)
 
 
-# Обработчик пропуска для url
 @router.callback_query(lambda call: call.data == "skip", TaskForm.url)
 async def skip_url(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -274,11 +267,10 @@ async def skip_url(call: CallbackQuery, state: FSMContext):
     async with async_session() as session:
         result = await session.execute(select(Task).where(Task.id == task_id))
         task = result.scalars().first()
-        # Сохраняем текущее значение url из БД
         await state.update_data(url=task.url)
 
     await call.message.edit_text(
-        "Введите новое значение для поля <b>время повторения (секунды)</b>:",
+        "Введите <b>интервал запросов на сайт (секунды)</b>:",
         parse_mode="HTML",
         reply_markup=skip_keyboard()
     )
@@ -295,21 +287,19 @@ async def process_time_repeat(message: Message, state: FSMContext):
             return
         await state.update_data(time_repeat=time_repeat)
 
-        # Устанавливаем count_page = 1 по умолчанию
         await state.update_data(count_page=1)
 
         await message.answer(
-            "Введите лимит количества объявлений за цикл (максимум 50):",
+            "Введите <b>ключевые слова</b> через запятую (например: квартира, балкон):",
             parse_mode="HTML",
             reply_markup=skip_keyboard()
         )
-        await state.set_state(TaskForm.max_ads_per_run)
+        await state.set_state(TaskForm.target_words)
+
     except ValueError:
         await message.answer("Неверный формат. Введите число:", reply_markup=get_cancel())
 
-
-
-# Обработчик пропуска для time_repeat
+# === Обработчик пропуска для time_repeat ===
 @router.callback_query(lambda call: call.data == "skip", TaskForm.time_repeat)
 async def skip_time_repeat(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -328,11 +318,145 @@ async def skip_time_repeat(call: CallbackQuery, state: FSMContext):
         await state.update_data(count_page=1)
 
     await call.message.edit_text(
-        "Введите лимит количества объявлений за цикл (максимум 50):",
+        "Введите <b>ключевые слова</b> через запятую (например: квартира, балкон):",
         parse_mode="HTML",
         reply_markup=skip_keyboard()
     )
-    await state.set_state(TaskForm.max_ads_per_run)
+    await state.set_state(TaskForm.target_words)
+
+# === Ввод ключевых слов ===
+@router.message(TaskForm.target_words)
+async def process_target_words(message: Message, state: FSMContext):
+    words = [w.strip() for w in message.text.split(",")] if message.text else []
+    await state.update_data(target_words=words)
+    await message.answer(
+        "Введите стоп-слова через запятую <i>(можно оставить пустым)</i>:",
+        parse_mode="HTML",
+        reply_markup=skip_keyboard()
+    )
+    await state.set_state(TaskForm.stop_words)
+
+
+@router.callback_query(lambda call: call.data == "skip", TaskForm.target_words)
+async def skip_target_words(call: CallbackQuery, state: FSMContext):
+    await state.update_data(target_words=[])
+    await call.message.edit_text(
+        "Введите стоп-слова через запятую <i>(можно оставить пустым)</i>:",
+        parse_mode="HTML",
+        reply_markup=skip_keyboard()
+    )
+    await state.set_state(TaskForm.stop_words)
+
+
+# === Ввод стоп-слов ===
+@router.message(TaskForm.stop_words)
+async def process_stop_words(message: Message, state: FSMContext):
+    words = [w.strip() for w in message.text.split(",")] if message.text else []
+    await state.update_data(stop_words=words)
+    await message.answer(
+        "Введите минимальную цену в рублях (только число, без пробелов)\n"
+        "Или нажмите 'Пропустить', если не хотите указывать:",
+        reply_markup=skip_keyboard()
+    )
+    await state.set_state(TaskForm.min_price)
+
+
+@router.callback_query(lambda call: call.data == "skip", TaskForm.stop_words)
+async def skip_stop_words(call: CallbackQuery, state: FSMContext):
+    await state.update_data(stop_words=[])
+    await call.message.edit_text(
+        "Введите минимальную цену в рублях (только число, без пробелов)\n"
+        "Или нажмите 'Пропустить', если не хотите указывать:",
+        reply_markup=skip_keyboard()
+    )
+    await state.set_state(TaskForm.min_price)
+
+
+# === Ввод минимальной цены ===
+@router.message(TaskForm.min_price)
+async def process_min_price(message: Message, state: FSMContext):
+    if message.text and message.text.isdigit():
+        min_price = int(message.text)
+        if min_price < 0:
+            await message.answer("Цена не может быть отрицательной. Введите снова:")
+            return
+
+        await state.update_data(min_price=min_price)
+        await message.answer(
+            "Введите максимальную цену в рублях (только число, без пробелов)\n"
+            "Или нажмите 'Пропустить', если не хотите указывать:",
+            reply_markup=skip_keyboard()
+        )
+        await state.set_state(TaskForm.max_price)
+    else:
+        await message.answer(
+            "Пожалуйста, введите число (например: 50000) или нажмите 'Пропустить'",
+            reply_markup=skip_keyboard()
+        )
+
+
+@router.callback_query(lambda call: call.data == "skip", TaskForm.min_price)
+async def skip_min_price(call: CallbackQuery, state: FSMContext):
+    await state.update_data(min_price=None)
+    await call.message.edit_text(
+        "Введите максимальную цену в рублях (только число, без пробелов)\n"
+        "Или нажмите 'Пропустить', если не хотите указывать:",
+        reply_markup=skip_keyboard()
+    )
+    await state.set_state(TaskForm.max_price)
+
+
+# === Ввод максимальной цены ===
+@router.message(TaskForm.max_price)
+async def process_max_price(message: Message, state: FSMContext):
+    if message.text and message.text.isdigit():
+        max_price = int(message.text)
+        if max_price < 0:
+            await message.answer("Цена не может быть отрицательной. Введите снова:")
+            return
+
+        data = await state.get_data()
+
+        if data.get('min_price') and max_price < data['min_price']:
+            await message.answer(
+                "Максимальная цена должна быть больше минимальной. Введите снова:",
+                reply_markup=skip_keyboard()
+            )
+            return
+
+        await state.update_data(max_price=max_price)
+        await message.answer(
+            "Введите лимит объявлений за цикл (максимум 50):",
+            reply_markup=skip_keyboard()
+        )
+        await state.set_state(TaskForm.max_ads_per_run)
+    else:
+        await message.answer(
+            "Пожалуйста, введите число (например: 100000) или нажмите 'Пропустить'",
+            reply_markup=skip_keyboard()
+        )
+
+
+@router.callback_query(lambda call: call.data == "skip", TaskForm.max_price)
+async def skip_max_price(call: CallbackQuery, state: FSMContext):
+    await state.update_data(max_price=None)
+    data = await state.get_data()
+    await state.update_data(max_ads_per_run=10)
+
+    update_data = {
+        'activity': data.get('activity', False),
+        'price_change': data.get('price_change', False),
+        'all_ads': data.get('all_ads', False),
+        'max_ads_per_run': 10,
+        'min_price': None,
+        'max_price': None
+    }
+
+    async with async_session() as session:
+        await update_task(session, data['task_id'], {**data, **update_data})
+
+    await call.message.edit_text("✅ Задача успешно обновлена!", reply_markup=run_task(data['task_id']))
+    await state.clear()
 
 
 # === Лимит объявлений ===
@@ -343,19 +467,20 @@ async def process_max_ads(message: Message, state: FSMContext):
         if max_ads > 50:
             await message.answer("Максимальное значение — 50. Введите снова:")
             return
+        if max_ads <= 0:
+            await message.answer("Значение должно быть больше 0. Введите снова:")
+            return
 
-        await state.update_data(max_ads_per_run=max_ads)
-
-        # Устанавливаем значения по умолчанию для пропущенных полей
         data = await state.get_data()
         update_data = {
             'activity': data.get('activity', False),
             'price_change': data.get('price_change', False),
             'all_ads': data.get('all_ads', False),
-            'max_ads_per_run': max_ads
+            'max_ads_per_run': max_ads,
+            'min_price': data.get('min_price'),
+            'max_price': data.get('max_price')
         }
 
-        # Обновляем задачу в БД
         task_id = data.get("task_id")
         async with async_session() as session:
             await update_task(session, task_id, {**data, **update_data})
@@ -366,8 +491,6 @@ async def process_max_ads(message: Message, state: FSMContext):
         await message.answer("Неверный формат. Введите число:", reply_markup=get_cancel())
 
 
-
-# Обработчик пропуска для max_ads_per_run
 @router.callback_query(lambda call: call.data == "skip", TaskForm.max_ads_per_run)
 async def skip_max_ads(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -377,19 +500,15 @@ async def skip_max_ads(call: CallbackQuery, state: FSMContext):
         result = await session.execute(select(Task).where(Task.id == task_id))
         task = result.scalars().first()
 
-        if task is not None:
-            max_ads_per_run = task.max_ads_per_run
-        else:
-            max_ads_per_run = 10  # Значение по умолчанию
+        max_ads_per_run = task.max_ads_per_run if task else 10
 
-        await state.update_data(max_ads_per_run=max_ads_per_run)
-
-        # Сохраняем обновления
         update_data = {
             'activity': data.get('activity', False),
             'price_change': data.get('price_change', False),
             'all_ads': data.get('all_ads', False),
-            'max_ads_per_run': max_ads_per_run
+            'max_ads_per_run': max_ads_per_run,
+            'min_price': data.get('min_price'),
+            'max_price': data.get('max_price')
         }
         await update_task(session, task_id, {**data, **update_data})
 
@@ -398,10 +517,6 @@ async def skip_max_ads(call: CallbackQuery, state: FSMContext):
 
 
 async def build_tasks_keyboard(user_id: int) -> tuple[InlineKeyboardMarkup, bool]:
-    """
-    Создает клавиатуру с задачами пользователя.
-    Возвращает кортеж (клавиатура, есть_ли_задачи)
-    """
     async with async_session() as session:
         tasks = await get_user_tasks(session, user_id)
         sorted_tasks = sorted(tasks, key=lambda x: x.number)
@@ -453,19 +568,13 @@ async def toggle_task_activity(call: CallbackQuery):
             await call.answer("Задача не найдена!", show_alert=True)
             return
 
-        # Меняем состояние активности
         new_status = not task.activity
         task.activity = new_status
         await session.commit()
 
-        # Формируем текст для всплывающего уведомления
         status_text = "включена" if new_status else "выключена"
-        notification_text = f"Задача {task.teg} {status_text}"
+        await call.answer(f"Задача {task.teg} {status_text}", show_alert=False)
 
-        # Отправляем всплывающее уведомление (исчезнет автоматически через 1.5 сек)
-        await call.answer(notification_text, show_alert=False)
-
-        # Обновляем клавиатуру
         keyboard, _ = await build_tasks_keyboard(user_id)
         await call.message.edit_reply_markup(reply_markup=keyboard)
 
@@ -487,6 +596,4 @@ async def handle_run_task(call: CallbackQuery):
         await session.commit()
 
     await call.answer("✅ Задача активирована!", show_alert=False)
-    await call.message.edit_reply_markup(reply_markup=None)  # убираем кнопку после нажатия
-
-
+    await call.message.edit_reply_markup(reply_markup=None)

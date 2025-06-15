@@ -9,6 +9,7 @@ from sqlalchemy import select
 from database.models import Task
 import asyncio
 
+
 async def parse_avito(task, bot):
     base_url = task['url']
     pages = ['', '&p=2', '&p=3', '&p=4', '&p=5'][:task['count_page']]
@@ -16,6 +17,9 @@ async def parse_avito(task, bot):
     teg = task['teg']
     target_words = task.get("target_words", [""])
     stop_words = task.get("stop_words", [""])
+    min_price = task.get("min_price")  # Получаем минимальную цену
+    max_price = task.get("max_price")  # Получаем максимальную цену
+
     if stop_words == [""]:
         stop_words = ["stop_words"]
 
@@ -25,7 +29,6 @@ async def parse_avito(task, bot):
 
     try:
         while True:
-
             async with async_session() as session:
                 result = await session.execute(select(Task.activity).where(Task.id == task['id']))
                 is_active = result.scalar()
@@ -66,19 +69,30 @@ async def parse_avito(task, bot):
                         price_tag = item.find('meta', {'itemprop': 'price'})
                         price = price_tag.get('content') if price_tag else ''
 
+                        # Проверяем цену на соответствие диапазону
+                        try:
+                            price_int = int(price) if price else 0
+                            price_valid = True
+                            if min_price is not None and price_int < min_price:
+                                price_valid = False
+                            if max_price is not None and price_int > max_price:
+                                price_valid = False
+                        except ValueError:
+                            price_valid = True  # Если цена не число, пропускаем проверку
+
                         description_tag = item.find('meta', {'itemprop': 'description'})
                         announcement_text = description_tag.get('content') if description_tag else ''
 
-                        # Новое: получение даты публикации
                         date_tag = item.find('p', {'data-marker': 'item-date'})
                         date_posted = date_tag.text.strip() if date_tag else ''
 
                         text = f"{name} {announcement_text}"
 
-                        has_target = any(word.lower() in text.lower() for word in target_words) if target_words else True
+                        has_target = any(
+                            word.lower() in text.lower() for word in target_words) if target_words else True
                         has_stop = any(word.lower() in text.lower() for word in stop_words) if stop_words else False
 
-                        if has_target and not has_stop and link:
+                        if has_target and not has_stop and link and price_valid:
                             if not await seen_ad_exists(task['id'], item_id):
                                 logger.info(f"[{teg}] New announcement: {link}")
 
@@ -105,7 +119,7 @@ async def parse_avito(task, bot):
 
                 except Exception as e:
                     logger.error(f"Ошибка при обработке {url}: {e}")
-                    time.sleep(10)
+                    await asyncio.sleep(10)
 
             if not new_ads_found:
                 logger.info(f"[{teg}] There are no new announcement.")

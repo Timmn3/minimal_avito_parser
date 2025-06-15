@@ -39,7 +39,7 @@ class Task(Base):
 
     id = Column(Integer, primary_key=True)
     user_id = Column(BigInteger, ForeignKey('users.id'))
-    number = Column(Integer)  # номер задачи (1, 2, 3...)
+    number = Column(Integer)
     teg = Column(String)
     url = Column(String)
     time_repeat = Column(Integer)
@@ -50,6 +50,8 @@ class Task(Base):
     activity = Column(Boolean)
     price_change = Column(Boolean)
     all_ads = Column(Boolean)
+    min_price = Column(Integer, nullable=True)
+    max_price = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     owner = relationship("User", back_populates="tasks")
     seen_ads = relationship("SeenAd", order_by=SeenAd.timestamp.desc(), back_populates="task")

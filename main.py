@@ -1,4 +1,5 @@
 import asyncio
+from multiprocessing import Process
 from aiogram import Bot, Dispatcher
 from loguru import logger
 from config import BOT_TOKEN, ADMIN_IDS
@@ -10,11 +11,11 @@ from handlers.tasks import router as tasks_router
 from utils.commands import set_default_commands
 from parsing.util.kill_processes import kill_chrome_processes
 
-
 logger.add("logs/loguru.log", rotation="50 MB", level="INFO")
 
 
-async def run_bot():
+async def run_bot_process():
+    """Запуск бота в отдельном процессе"""
     await init_db()
     kill_chrome_processes()
 
@@ -27,10 +28,6 @@ async def run_bot():
 
     await set_default_commands(bot)
 
-    # === Запуск менеджера задач ===
-    task_manager = TaskManager(bot)
-    asyncio.create_task(task_manager.start())  # фоновый запуск
-
     try:
         for admin_id in ADMIN_IDS:
             await bot.send_message(admin_id, "🤖 Бот успешно запущен")
@@ -41,5 +38,42 @@ async def run_bot():
     await dp.start_polling(bot)
 
 
+async def run_parser_process():
+    """Запуск парсера в отдельном процессе"""
+    await init_db()
+    kill_chrome_processes()
+
+    bot = Bot(token=BOT_TOKEN)
+    task_manager = TaskManager(bot)
+    await task_manager.start()
+
+
+def run_bot():
+    """Обертка для запуска бота в процессе"""
+    asyncio.run(run_bot_process())
+
+
+def run_parser():
+    """Обертка для запуска парсера в процессе"""
+    asyncio.run(run_parser_process())
+
+
 if __name__ == "__main__":
-    asyncio.run(run_bot())
+    # Создаем и запускаем процессы
+    bot_process = Process(target=run_bot)
+    parser_process = Process(target=run_parser)
+
+    bot_process.start()
+    parser_process.start()
+
+    try:
+        # Ожидаем завершения процессов (обычно бесконечно)
+        bot_process.join()
+        parser_process.join()
+    except KeyboardInterrupt:
+        logger.info("Получен сигнал прерывания, завершаем процессы...")
+        bot_process.terminate()
+        parser_process.terminate()
+        bot_process.join()
+        parser_process.join()
+        logger.info("Процессы завершены.")

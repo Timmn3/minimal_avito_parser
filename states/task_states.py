@@ -9,6 +9,8 @@ class TaskForm(StatesGroup):
     target_words = State()
     stop_words = State()
     max_ads_per_run = State()
+    min_price = State()
+    max_price = State()
     activity = State()
     price_change = State()
     all_ads = State()
