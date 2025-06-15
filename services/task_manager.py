@@ -3,6 +3,7 @@ from loguru import logger
 from parsing.parser_avito import parse_avito
 from services.task_service import load_tasks_from_db
 from aiogram import Bot
+from datetime import datetime, timedelta
 
 
 class TaskManager:
@@ -10,14 +11,42 @@ class TaskManager:
         self.bot = bot
         self.running_tasks = {}  # task_id -> asyncio.Task
         self.lock = asyncio.Lock()
+        self.last_restart = datetime.now()
 
     async def start(self):
         while True:
             try:
+                # Проверяем, нужно ли выполнить принудительный перезапуск
+                if datetime.now() - self.last_restart > timedelta(minutes=10):
+                    logger.info("[TaskManager] Выполняю принудительный перезапуск всех задач")
+                    await self.restart_all_tasks()
+                    self.last_restart = datetime.now()
+
                 await self.sync_tasks()
             except Exception as e:
                 logger.error(f"[TaskManager] Ошибка при синхронизации задач: {e}")
-            await asyncio.sleep(10)  # Интервал проверки, можно изменить
+            await asyncio.sleep(10)  # Интервал проверки
+
+    async def restart_all_tasks(self):
+        """Принудительно перезапускает все активные задачи"""
+        async with self.lock:
+            # Сначала останавливаем все текущие задачи
+            for task_id, task_future in list(self.running_tasks.items()):
+                task_future.cancel()
+                try:
+                    await task_future
+                except asyncio.CancelledError:
+                    pass
+                self.running_tasks.pop(task_id)
+
+            # Затем загружаем и запускаем активные задачи снова
+            tasks = await load_tasks_from_db()
+            active_tasks = [t for t in tasks if t["activity"]]
+
+            for task in active_tasks:
+                logger.info(f"[TaskManager] Перезапуск задачи: {task['teg']} (ID {task['id']})")
+                task_future = asyncio.create_task(run_with_restart(task, self.bot))
+                self.running_tasks[task["id"]] = task_future
 
     async def sync_tasks(self):
         tasks = await load_tasks_from_db()
