@@ -500,7 +500,7 @@ async def skip_max_ads(call: CallbackQuery, state: FSMContext):
         result = await session.execute(select(Task).where(Task.id == task_id))
         task = result.scalars().first()
 
-        max_ads_per_run = task.max_ads_per_run if task else 10
+        max_ads_per_run = task.max_ads_per_run if task else 50
 
         update_data = {
             'activity': data.get('activity', False),

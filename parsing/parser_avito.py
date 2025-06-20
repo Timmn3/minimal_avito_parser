@@ -1,4 +1,6 @@
 import time
+from typing import Optional
+
 from bs4 import BeautifulSoup
 from loguru import logger
 from parsing.util.selenium_utils import setup_driver
@@ -61,7 +63,7 @@ async def parse_avito(task, bot):
                             link_tag = item.find('a', {'data-marker': 'item-title'})
                             link = link_tag.get('href') if link_tag else None
                             if link and link.startswith('/'):
-                                link = 'https://www.avito.ru' + link
+                                link = 'https://www.avito.ru/' + item_id
 
                             name_tag = item.find('a', {'data-marker': 'item-title'})
                             name = name_tag.text.strip() if name_tag else ''
@@ -88,6 +90,9 @@ async def parse_avito(task, bot):
 
                             text = f"{name} {announcement_text}"
 
+                            description = description_tag.get('content')
+
+
                             has_target = any(
                                 word.lower() in text.lower() for word in target_words) if target_words else True
                             has_stop = any(word.lower() in text.lower() for word in stop_words) if stop_words else False
@@ -107,12 +112,28 @@ async def parse_avito(task, bot):
 
                                     from database.db import get_users_by_task_teg
                                     users = await get_users_by_task_teg(teg)
+
+                                    # Извлечение местоположения
+                                    location_tag = item.find('div', class_='geo-root-BBVai')
+                                    location = location_tag.get_text(
+                                        strip=True) if location_tag else "Местоположение не указано"
+
+                                    # Извлечение изображения в лучшем качестве
+                                    image_url = await extract_image_url(item)
+
+                                    # При необходимости очищаем от параметров сжатия
+                                    if image_url and '?' in image_url:
+                                        image_url = image_url.split('?')[0]
+
                                     await notify_users_about_new_ad(bot, users, {
                                         'teg': teg,
+                                        'image_url': image_url,
                                         'title': name,
                                         'price': price,
+                                        'location': location,
                                         'link': link,
-                                        'date': date_posted
+                                        'date': date_posted,
+                                        'description': description
                                     })
 
                                     new_ads_found = True
@@ -131,3 +152,37 @@ async def parse_avito(task, bot):
                 raise
     finally:
         driver.quit()
+
+from bs4 import Tag
+async def extract_image_url(item: Tag) -> Optional[str]:
+    """
+    Извлекает URL главного изображения объявления в максимально возможном качестве.
+
+    :param item: BeautifulSoup-элемент объявления
+    :return: URL изображения или None, если не найдено
+    """
+    img_tag = item.find('img', class_='photo-slider-image-cD891')
+    if not img_tag:
+        return None
+
+    # 1. Пробуем извлечь из srcset (если доступно)
+    if img_tag.get('srcset'):
+        srcset = img_tag['srcset']
+        urls = [url.strip() for url in srcset.split(',') if url.strip()]
+        if urls:
+            # Берем последний URL (обычно самый большой размер)
+            return urls[-1].split()[0]
+
+    # 2. Модифицируем src (основной URL изображения)
+    if img_tag.get('src'):
+        src = img_tag['src']
+
+        # Пробуем улучшить качество, заменяя размер
+        for size in ['208w', '236w', '318w', '416w', '472w']:
+            if size in src:
+                return src.replace(size, '636w')
+
+        # Возвращаем оригинальный src, если не нашли размер
+        return src
+
+    return None

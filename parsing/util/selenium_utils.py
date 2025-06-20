@@ -7,7 +7,7 @@ def setup_driver():
     options.add_argument('--disable-blink-features=AutomationControlled')
     # Скрывает факт автоматизации, помогает обходить антибот-защиту
 
-    options.add_argument('--headless')
+    # options.add_argument('--headless')
     # Запуск в фоновом режиме без графического интерфейса (актуально для серверов)
 
     options.add_argument('--no-sandbox')
@@ -26,25 +26,25 @@ def setup_driver():
 
     # --- Дополнительные опции для минимального потребления ОЗУ --- #
 
-    options.add_argument('--disable-software-rasterizer')
-    # # Отключает программный рендеринг, уменьшает нагрузку на процессор и память
-
-    options.add_argument('--no-zygote')
-    # Отключает вспомогательный процесс Chrome Zygote, уменьшает потребление памяти
-
-    options.add_argument('--process-per-site')
-    # Один процесс на сайт, ограничивает разрастание числа процессов
-
-    options.add_argument('--media-cache-size=0')
-    # Отключает кеш для медиа
-
-    options.add_argument('--js-flags="--max-old-space-size=64"')
-    # Ограничивает объем памяти для JS движка V8 (в МБ)
-
-    prefs = {
-        "profile.managed_default_content_settings.images": 2,  # Отключить загрузку картинок
-        "profile.default_content_setting_values.notifications": 2,  # Отключить уведомления
-    }
-    options.add_experimental_option("prefs", prefs)
+    # options.add_argument('--disable-software-rasterizer')
+    # # # Отключает программный рендеринг, уменьшает нагрузку на процессор и память
+    #
+    # options.add_argument('--no-zygote')
+    # # Отключает вспомогательный процесс Chrome Zygote, уменьшает потребление памяти
+    #
+    # options.add_argument('--process-per-site')
+    # # Один процесс на сайт, ограничивает разрастание числа процессов
+    #
+    # options.add_argument('--media-cache-size=0')
+    # # Отключает кеш для медиа
+    #
+    # options.add_argument('--js-flags="--max-old-space-size=64"')
+    # # Ограничивает объем памяти для JS движка V8 (в МБ)
+    #
+    # prefs = {
+    #     "profile.managed_default_content_settings.images": 2,  # Отключить загрузку картинок
+    #     "profile.default_content_setting_values.notifications": 2,  # Отключить уведомления
+    # }
+    # options.add_experimental_option("prefs", prefs)
 
     return webdriver.Chrome(options=options)
