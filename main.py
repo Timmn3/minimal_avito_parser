@@ -10,6 +10,8 @@ from handlers.menu import router as menu_router
 from handlers.tasks import router as tasks_router
 from utils.commands import set_default_commands
 from parsing.util.kill_processes import kill_chrome_processes
+from utils.memory_monitor import monitor_system_memory, log_total_memory
+
 
 logger.add("logs/loguru.log", rotation="50 MB", level="INFO")
 
@@ -18,6 +20,9 @@ async def run_bot_process():
     """Запуск бота в отдельном процессе"""
     await init_db()
     kill_chrome_processes()
+
+    log_total_memory("Bot")  # до запуска
+    asyncio.create_task(monitor_system_memory("Bot"))  # фоновый мониторинг
 
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()

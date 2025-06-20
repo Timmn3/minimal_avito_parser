@@ -10,3 +10,4 @@ alembic~=1.16.1
 psycopg2-binary~=2.9.9
 asyncpg~=0.30.0
 apscheduler==3.10.1
+psutil~=7.0.0

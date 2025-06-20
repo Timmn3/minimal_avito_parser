@@ -118,7 +118,10 @@ async def parse_avito(task, bot):
                                     new_ads_found = True
 
                     except Exception as e:
-                        logger.error(f"Ошибка при обработке {url}: {e}")
+                        if "script timeout" in str(e) or "Message: script timeout" in str(e):
+                            logger.warning(f"[{teg}] Таймаут при загрузке страницы")
+                        else:
+                            logger.error(f"Ошибка при обработке {url}: {e}")
                         await asyncio.sleep(10)
 
                 if not new_ads_found:
