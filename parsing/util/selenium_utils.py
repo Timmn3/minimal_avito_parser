@@ -7,7 +7,7 @@ def setup_driver():
     options.add_argument('--disable-blink-features=AutomationControlled')
     # Скрывает факт автоматизации, помогает обходить антибот-защиту
 
-    # options.add_argument('--headless')
+    options.add_argument('--headless')
     # Запуск в фоновом режиме без графического интерфейса (актуально для серверов)
 
     options.add_argument('--no-sandbox')
