@@ -35,7 +35,7 @@ async def run_bot_process():
 
     try:
         for admin_id in ADMIN_IDS:
-            await bot.send_message(admin_id, "🤖 Бот успешно запущен")
+            await bot.send_message(admin_id, "🤖 Бот успешно запущен ")
         logger.info("Бот запущен. Администраторы уведомлены.")
     except Exception as e:
         logger.error(f"Не удалось отправить сообщение админам: {e}")
