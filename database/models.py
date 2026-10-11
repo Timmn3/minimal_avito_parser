@@ -34,6 +34,14 @@ class SeenAd(Base):
     task = relationship("Task", back_populates="seen_ads")
     user = relationship("User", back_populates="seen_ads")  # Новое отношение
 
+class Setting(Base):
+    """Общие настройки бота (key-value). Лежат в БД, потому что бот и парсер - разные процессы."""
+    __tablename__ = 'settings'
+
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
+
+
 class Task(Base):
     __tablename__ = 'tasks'
 

@@ -17,6 +17,8 @@ from services.task_manager import TaskManager
 from handlers.start import router as start_router
 from handlers.menu import router as menu_router
 from handlers.tasks import router as tasks_router
+from handlers.settings import router as settings_router
+from services.settings_service import get_queue_settings
 from utils.commands import set_default_commands
 from utils.version import get_version
 from parsing.parser_avito import MIN_REQUEST_INTERVAL
@@ -53,6 +55,14 @@ async def _startup_message() -> str:
         logger.warning(f"Не удалось посчитать активные задачи: {e}")
         active_tasks = "?"
 
+    try:
+        s = await get_queue_settings()
+        restart = f"каждые {s['restart_minutes']} мин" if s["restart_minutes"] else "не перезапускать"
+        step = f"{s['queue_step']} сек"
+    except Exception as e:
+        logger.warning(f"Не удалось прочитать настройки: {e}")
+        restart = step = "?"
+
     return (
         f"🚀 {get_version()}\n"
         f"──────────────\n"
@@ -60,7 +70,8 @@ async def _startup_message() -> str:
         f"🗄 БД: {DB_NAME}@{DB_HOST}\n"
         f"🖥 Сервер: {socket.gethostname()}\n"
         f"🧭 Chrome: {_chrome_version()}\n"
-        f"⏱ Мин. интервал запросов к Авито: {MIN_REQUEST_INTERVAL} сек\n"
+        f"🔄 Перезапуск браузера: {restart}\n"
+        f"⏱ Шаг очереди запросов: {step} (одна задача - не чаще раза в {MIN_REQUEST_INTERVAL} сек)\n"
         f"📋 Активных задач: {active_tasks}"
     )
 
@@ -77,6 +88,7 @@ async def run_bot_process():
 
     dp.include_router(start_router)
     dp.include_router(menu_router)
+    dp.include_router(settings_router)
     dp.include_router(tasks_router)
 
     await set_default_commands(bot)
