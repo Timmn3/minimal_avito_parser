@@ -18,7 +18,7 @@ from handlers.start import router as start_router
 from handlers.menu import router as menu_router
 from handlers.tasks import router as tasks_router
 from handlers.settings import router as settings_router
-from services.settings_service import get_queue_settings
+from services.settings_service import get_queue_settings, LOAD_MODE_TITLES
 from utils.commands import set_default_commands
 from utils.version import get_version
 from parsing.parser_avito import MIN_REQUEST_INTERVAL
@@ -59,9 +59,10 @@ async def _startup_message() -> str:
         s = await get_queue_settings()
         restart = f"каждые {s['restart_minutes']} мин" if s["restart_minutes"] else "не перезапускать"
         step = f"{s['queue_step']} сек"
+        mode = LOAD_MODE_TITLES[s["load_mode"]]
     except Exception as e:
         logger.warning(f"Не удалось прочитать настройки: {e}")
-        restart = step = "?"
+        restart = step = mode = "?"
 
     return (
         f"🚀 {get_version()}\n"
@@ -71,6 +72,7 @@ async def _startup_message() -> str:
         f"🖥 Сервер: {socket.gethostname()}\n"
         f"🧭 Chrome: {_chrome_version()}\n"
         f"🔄 Перезапуск браузера: {restart}\n"
+        f"🔁 Режим загрузки: {mode}\n"
         f"⏱ Шаг очереди запросов: {step} (одна задача - не чаще раза в {MIN_REQUEST_INTERVAL} сек)\n"
         f"📋 Активных задач: {active_tasks}"
     )

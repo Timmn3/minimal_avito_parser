@@ -111,7 +111,7 @@ class TaskManager:
         page = self.next_page.get(task["id"], 0)
         try:
             status = await check_task_page(self.driver, task, page, self.bot, self.gate,
-                                           settings["queue_step"], self.page_state)
+                                           settings["queue_step"], self.page_state, settings["load_mode"])
             if status != PAGE_BLOCKED:
                 self.next_page[task["id"]] = page + 1  # неудачную страницу повторим, а не пропустим
         except asyncio.CancelledError:

@@ -18,6 +18,7 @@ def get_settings_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 Период перезапуска браузера", callback_data="set_restart")],
         [InlineKeyboardButton(text="⏱ Шаг очереди запросов", callback_data="set_step")],
+        [InlineKeyboardButton(text="🔁 Режим загрузки страницы", callback_data="set_mode")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="main_menu")]
     ])
 

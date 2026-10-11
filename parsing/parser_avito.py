@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 from loguru import logger
 from services.notification_service import notify_users_about_new_ad
 from database.db import seen_ad_exists, add_seen_ad
+from services.settings_service import MODE_REFRESH, MODE_GET_CLEAN
 import asyncio
 
 BLOCK_MARKER = "доступ ограничен:"  # «Доступ ограничен: проблема с IP» / «...: проверка безопасности»
@@ -65,19 +66,32 @@ def _read_page(driver) -> tuple[str, str, int]:
     return classify_page(driver.title or "", source, items), source, items
 
 
-async def load_page(driver, url: str, teg: str, gate: RequestGate, step: float,
-                    state: dict) -> tuple[str, Optional[BeautifulSoup]]:
+def _clear_session(driver) -> None:
+    """Чистит cookies и HTTP-кэш браузера: следующий заход Авито видит как нового посетителя."""
+    try:
+        driver.execute_cdp_cmd("Network.clearBrowserCookies", {})
+        driver.execute_cdp_cmd("Network.clearBrowserCache", {})
+    except Exception as e:
+        logger.warning(f"Не удалось почистить cookies и кэш: {e}")
+
+
+async def load_page(driver, url: str, teg: str, gate: RequestGate, step: float, state: dict,
+                    mode: str = MODE_REFRESH) -> tuple[str, Optional[BeautifulSoup]]:
     """
-    Загружает страницу в той же вкладке: тот же URL - refresh(), другой - get(). Заглушку «Доступ ограничен»
-    снимаем обновлением (до MAX_BLOCK_REFRESHES раз), каждое обновление тоже идёт через общую очередь.
+    Загружает страницу в той же вкладке. Режим mode: refresh - тот же URL обновляем, другой открываем;
+    get - всегда открываем заново; get_clean - открываем заново, предварительно почистив cookies и кэш.
+    Заглушку «Доступ ограничен» снимаем обновлением (до MAX_BLOCK_REFRESHES раз) в любом режиме,
+    каждое обновление тоже идёт через общую очередь.
     Возвращает (статус, soup); soup только если страницу можно парсить.
     """
     await gate.wait(step)
-    if state.get('url') == url:
+    if mode == MODE_REFRESH and state.get('url') == url:
         logger.debug(f"[{teg}] запрос: refresh")
         driver.refresh()
     else:
-        logger.debug(f"[{teg}] запрос: get {url}")
+        if mode == MODE_GET_CLEAN:
+            _clear_session(driver)
+        logger.debug(f"[{teg}] запрос: get [{mode}] {url}")
         driver.get(url)
         state['url'] = url
     await asyncio.sleep(PAGE_LOAD_WAIT)
@@ -96,12 +110,17 @@ async def load_page(driver, url: str, teg: str, gate: RequestGate, step: float,
     if status == PAGE_BLOCKED:
         logger.warning(f"[{teg}] Блокировка не снялась после {MAX_BLOCK_REFRESHES} обновлений")
         return status, None
-    logger.debug(f"[{teg}] страница: {status}, объявлений в разметке: {items}")
+    soup = BeautifulSoup(source, "html.parser")
+    top = []
+    for el in soup.find_all(attrs={'data-marker': 'item'})[:3]:
+        date_tag = el.find(attrs={'data-marker': 'item-date'})
+        top.append(f"{el.get('data-item-id')} ({date_tag.get_text(strip=True) if date_tag else '?'})")
+    logger.debug(f"[{teg}] страница: {status}, объявлений в разметке: {items}, верх: {', '.join(top)}")
     if status == PAGE_SOFT_BLOCK:
         logger.warning(f"[{teg}] Заглушка поверх выдачи ({items} объявл. в разметке), парсим и притормаживаем очередь")
     elif items == 0:
         logger.warning(f"[{teg}] На странице 0 объявлений и это не заглушка - проверьте URL задачи")
-    return status, BeautifulSoup(source, "html.parser")
+    return status, soup
 
 
 async def process_items(soup: BeautifulSoup, task: dict, bot) -> bool:
@@ -215,7 +234,7 @@ async def process_items(soup: BeautifulSoup, task: dict, bot) -> bool:
 
 
 async def check_task_page(driver, task: dict, page_index: int, bot, gate: RequestGate, step: float,
-                          state: dict) -> str:
+                          state: dict, mode: str = MODE_REFRESH) -> str:
     """
     Один шаг очереди: загрузить страницу page_index задачи и разобрать её.
     Возвращает статус страницы; BLOCKED = цикл неудачный, парсинг не выполнялся.
@@ -224,7 +243,7 @@ async def check_task_page(driver, task: dict, page_index: int, bot, gate: Reques
     pages = ['', '&p=2', '&p=3', '&p=4', '&p=5'][:task['count_page']] or ['']
     url = task['url'] + pages[page_index % len(pages)]
 
-    status, soup = await load_page(driver, url, teg, gate, step, state)
+    status, soup = await load_page(driver, url, teg, gate, step, state, mode)
     if status == PAGE_BLOCKED:
         logger.warning(f"[{teg}] Цикл неудачный: блокировка не снялась, страницу не парсим")
         gate.cooldown(BLOCK_COOLDOWN)

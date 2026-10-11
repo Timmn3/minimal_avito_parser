@@ -31,7 +31,8 @@ async def settings_text() -> str:
     return (
         "⚙️ <b>Настройки</b>\n\n"
         f"🔄 Перезапуск браузера: <b>{restart_text}</b>\n"
-        f"⏱ Шаг очереди: <b>{step} сек</b> (пауза между любыми запросами к Авито)\n\n"
+        f"⏱ Шаг очереди: <b>{step} сек</b> (пауза между любыми запросами к Авито)\n"
+        f"🔁 Режим загрузки: <b>{cfg.LOAD_MODE_TITLES[s['load_mode']]}</b>\n\n"
         f"📋 Активных задач: {active}\n"
         f"Каждая задача проверяется примерно раз в <b>{per_task} сек</b>\n"
         "<i>(не чаще раза в минуту и не чаще, чем указано в её интервале)</i>"
@@ -86,6 +87,18 @@ async def process_restart(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("✅ Сохранено\n\n" + await settings_text(), parse_mode="HTML",
                          reply_markup=get_settings_keyboard())
+
+
+@router.callback_query(lambda call: call.data == "set_mode")
+async def switch_mode(call: CallbackQuery, state: FSMContext):
+    """Переключает режим загрузки страницы по кругу; парсер подхватывает на следующем шаге."""
+    if call.from_user.id not in ADMIN_IDS:
+        await call.answer(NO_RIGHTS, show_alert=True)
+        return
+    await state.clear()
+    new_mode = await cfg.cycle_load_mode()
+    await call.message.edit_text(await settings_text(), parse_mode="HTML", reply_markup=get_settings_keyboard())
+    await call.answer(f"Режим: {cfg.LOAD_MODE_TITLES[new_mode]}")
 
 
 @router.callback_query(lambda call: call.data == "set_step")
