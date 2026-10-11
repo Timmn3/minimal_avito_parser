@@ -101,13 +101,30 @@ async def run_parser_process():
     await task_manager.start()
 
 
+def _die_with_parent():
+    """
+    Linux: ребёнок получает SIGKILL, если умер главный процесс. Иначе после kill -9 главного
+    бот и парсер остаются сиротами и работают рядом с новым запуском (двойной поллинг и двойные запросы к Авито).
+    """
+    if not sys.platform.startswith("linux"):
+        return
+    try:
+        import ctypes
+        import signal
+        ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGKILL)  # 1 = PR_SET_PDEATHSIG
+    except Exception as e:
+        logger.warning(f"PR_SET_PDEATHSIG не установлен: {e}")
+
+
 def run_bot():
     """Обертка для запуска бота в процессе"""
+    _die_with_parent()
     asyncio.run(run_bot_process())
 
 
 def run_parser():
     """Обертка для запуска парсера в процессе"""
+    _die_with_parent()
     asyncio.run(run_parser_process())
 
 
