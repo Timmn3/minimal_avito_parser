@@ -96,8 +96,11 @@ async def load_page(driver, url: str, teg: str, gate: RequestGate, step: float,
     if status == PAGE_BLOCKED:
         logger.warning(f"[{teg}] Блокировка не снялась после {MAX_BLOCK_REFRESHES} обновлений")
         return status, None
+    logger.debug(f"[{teg}] страница: {status}, объявлений в разметке: {items}")
     if status == PAGE_SOFT_BLOCK:
         logger.warning(f"[{teg}] Заглушка поверх выдачи ({items} объявл. в разметке), парсим и притормаживаем очередь")
+    elif items == 0:
+        logger.warning(f"[{teg}] На странице 0 объявлений и это не заглушка - проверьте URL задачи")
     return status, BeautifulSoup(source, "html.parser")
 
 
