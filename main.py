@@ -66,7 +66,6 @@ async def _startup_message() -> str:
 
 async def run_bot_process():
     """Запуск бота в отдельном процессе"""
-    await init_db()
     kill_chrome_processes()
 
     log_total_memory("Bot")  # до запуска
@@ -94,7 +93,6 @@ async def run_bot_process():
 
 async def run_parser_process():
     """Запуск парсера в отдельном процессе"""
-    await init_db()
     kill_chrome_processes()
 
     bot = make_bot()
@@ -113,6 +111,9 @@ def run_parser():
 
 
 if __name__ == "__main__":
+    # Таблицы создаём один раз до старта процессов: параллельный create_all на пустой БД падает на дубликате типа
+    asyncio.run(init_db())
+
     # Создаем и запускаем процессы
     bot_process = Process(target=run_bot)
     parser_process = Process(target=run_parser)
