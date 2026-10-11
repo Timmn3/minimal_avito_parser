@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from config import BOT_TOKEN, ADMIN_IDS, TELEGRAM_PROXY, DB_NAME, DB_HOST
 from database.db import async_session
 from database.init_db import init_db
+from database.session import engine as db_engine
 from database.models import Task
 from services.task_manager import TaskManager
 from handlers.start import router as start_router
@@ -111,8 +112,13 @@ def run_parser():
 
 
 if __name__ == "__main__":
-    # Таблицы создаём один раз до старта процессов: параллельный create_all на пустой БД падает на дубликате типа
-    asyncio.run(init_db())
+    # Таблицы создаём один раз до старта процессов: параллельный create_all на пустой БД падает на дубликате типа.
+    # Пул закрываем, иначе дочерние процессы унаследуют через fork соединения, привязанные к чужому event loop.
+    async def _prepare_db():
+        await init_db()
+        await db_engine.dispose()
+
+    asyncio.run(_prepare_db())
 
     # Создаем и запускаем процессы
     bot_process = Process(target=run_bot)
