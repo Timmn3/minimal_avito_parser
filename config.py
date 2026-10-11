@@ -15,6 +15,10 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN не задан в .env файле")
 
+# Прокси для Telegram API (на серверах без прямого доступа к Telegram), например socks5://127.0.0.1:1080.
+# Авито через него НЕ ходит - Chrome подключается напрямую.
+TELEGRAM_PROXY = os.getenv("TELEGRAM_PROXY") or None
+
 # Список админов
 ADMIN_IDS = list(map(int, os.getenv("ADMIN_IDS", "").split(","))) if os.getenv("ADMIN_IDS") else []
 
