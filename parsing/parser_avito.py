@@ -112,10 +112,11 @@ async def load_page(driver, url: str, teg: str, gate: RequestGate, step: float, 
         return status, None
     soup = BeautifulSoup(source, "html.parser")
     top = []
-    for el in soup.find_all(attrs={'data-marker': 'item'})[:3]:
+    for n, el in enumerate(soup.find_all(attrs={'data-marker': 'item'})[:8]):
         date_tag = el.find(attrs={'data-marker': 'item-date'})
-        top.append(f"{el.get('data-item-id')} ({date_tag.get_text(strip=True) if date_tag else '?'})")
-    logger.debug(f"[{teg}] страница: {status}, объявлений в разметке: {items}, верх: {', '.join(top)}")
+        age = f" ({date_tag.get_text(strip=True)})" if n < 3 and date_tag else ""
+        top.append(f"{el.get('data-item-id')}{age}")
+    logger.debug(f"[{teg}] страница [{mode}]: {status}, объявлений в разметке: {items}, верх: {', '.join(top)}")
     if status == PAGE_SOFT_BLOCK:
         logger.warning(f"[{teg}] Заглушка поверх выдачи ({items} объявл. в разметке), парсим и притормаживаем очередь")
     elif items == 0:
