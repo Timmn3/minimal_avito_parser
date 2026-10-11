@@ -28,6 +28,7 @@ async def parse_avito(task, bot):
     max_ads_per_run = task.get("max_ads_per_run", 30)
 
     driver = setup_driver()
+    state = {'last_request': 0.0, 'url': None}  # для троттлинга и «обновить вместо открыть заново»
 
     try:
         while True:
@@ -43,12 +44,11 @@ async def parse_avito(task, bot):
                 for page in pages:
                     url = base_url + page
                     try:
-                        driver.get(url)
-                        await asyncio.sleep(time_repeat)
+                        await _open_page(driver, url, teg, state, time_repeat)
                         driver.execute_script("window.stop();")
 
                         soup = BeautifulSoup(driver.page_source, "html.parser")
-                        ad = soup.find_all(class_='iva-item-root-XBsVL')
+                        ad = soup.find_all(attrs={'data-marker': 'item'})  # хэш-классы Авито меняются, data-marker стабилен
 
                         for item in ad[:max_ads_per_run]:
                             if not item:
@@ -63,7 +63,7 @@ async def parse_avito(task, bot):
                             link_tag = item.find('a', {'data-marker': 'item-title'})
                             link = link_tag.get('href') if link_tag else None
                             if link and link.startswith('/'):
-                                link = 'https://www.avito.ru/' + item_id
+                                link = 'https://www.avito.ru' + link.split('?')[0]  # без трекингового context=
 
                             name_tag = item.find('a', {'data-marker': 'item-title'})
                             name = name_tag.text.strip() if name_tag else ''
@@ -84,14 +84,17 @@ async def parse_avito(task, bot):
 
                             description_tag = item.find('meta', {'itemprop': 'description'})
                             announcement_text = description_tag.get('content') if description_tag else ''
+                            if not announcement_text:
+                                # в новой выдаче описания нет - берём характеристики («127 см³ / 14 л.с., ...»)
+                                params_tag = item.find(attrs={'data-marker': 'item-specific-params'})
+                                announcement_text = params_tag.get_text(' ', strip=True) if params_tag else ''
 
                             date_tag = item.find('p', {'data-marker': 'item-date'})
                             date_posted = date_tag.text.strip() if date_tag else ''
 
                             text = f"{name} {announcement_text}"
 
-                            description = description_tag.get('content')
-
+                            description = announcement_text
 
                             has_target = any(
                                 word.lower() in text.lower() for word in target_words) if target_words else True
@@ -114,7 +117,7 @@ async def parse_avito(task, bot):
                                     users = await get_users_by_task_teg(teg)
 
                                     # Извлечение местоположения
-                                    location_tag = item.find('div', class_='geo-root-BBVai')
+                                    location_tag = item.find(attrs={'data-marker': 'item-location'})
                                     location = location_tag.get_text(
                                         strip=True) if location_tag else "Местоположение не указано"
 
@@ -141,9 +144,16 @@ async def parse_avito(task, bot):
                     except Exception as e:
                         if "script timeout" in str(e) or "Message: script timeout" in str(e):
                             logger.warning(f"[{teg}] Таймаут при загрузке страницы")
+                        elif _is_dead_session(e):
+                            logger.warning(f"[{teg}] Браузер закрыт/упал, запускаем заново ({str(e).splitlines()[0]})")
+                            try:
+                                driver.quit()
+                            except Exception:
+                                pass
+                            driver = setup_driver()
+                            state['url'] = None
                         else:
                             logger.error(f"Ошибка при обработке {url}: {e}")
-                        await asyncio.sleep(10)
 
                 if not new_ads_found:
                     logger.info(f"[{teg}] There are no new announcement.")
@@ -153,6 +163,60 @@ async def parse_avito(task, bot):
     finally:
         driver.quit()
 
+BLOCK_TITLE_MARKER = "доступ ограничен"
+MAX_BLOCK_REFRESHES = 6
+MIN_REQUEST_INTERVAL = 60  # сек. Авито банит по IP за частые запросы - реже раза в минуту не ходим
+PAGE_LOAD_WAIT = 10        # сек. на отрисовку страницы после загрузки/обновления
+DEAD_SESSION_MARKERS = ("invalid session id", "no such window", "disconnected", "chrome not reachable",
+                        "target window already closed", "session deleted", "tab crashed")
+
+
+def _is_dead_session(exc: Exception) -> bool:
+    """Браузер закрыт пользователем или упал - драйвер надо пересоздавать."""
+    return any(marker in str(exc).lower() for marker in DEAD_SESSION_MARKERS)
+
+
+async def _throttle(state: dict, interval: float) -> None:
+    """Выдерживает паузу не меньше interval сек. с момента прошлого запроса к Авито."""
+    wait = state['last_request'] + interval - time.monotonic()
+    if wait > 0:
+        await asyncio.sleep(wait)
+    state['last_request'] = time.monotonic()
+
+
+async def _open_page(driver, url: str, teg: str, state: dict, time_repeat: int = 0) -> None:
+    """
+    Загружает страницу с соблюдением лимита запросов. Если уже открыта эта же страница -
+    просто обновляет её (вкладку не закрываем и заново не открываем).
+    """
+    interval = max(MIN_REQUEST_INTERVAL, time_repeat or 0)
+    await _throttle(state, interval)
+    if state['url'] == url:
+        driver.refresh()
+    else:
+        driver.get(url)
+        state['url'] = url
+    await asyncio.sleep(PAGE_LOAD_WAIT)
+    await _refresh_if_blocked(driver, teg, state)
+
+
+async def _refresh_if_blocked(driver, teg: str, state: dict) -> None:
+    """
+    Авито при первом заходе нередко отдаёт заглушку «Доступ ограничен: проблема с IP».
+    Обновление страницы её снимает, иногда с нескольких раз - обновляем подряд (без лимита раз в минуту,
+    это снятие заглушки, а не парсинг), после чего отсчёт интервала до следующего запроса идёт заново.
+    """
+    for attempt in range(1, MAX_BLOCK_REFRESHES + 1):
+        if BLOCK_TITLE_MARKER not in (driver.title or "").lower():
+            return
+        logger.warning(f"[{teg}] Страница блокировки Авито, обновляем (попытка {attempt}/{MAX_BLOCK_REFRESHES})")
+        driver.refresh()
+        await asyncio.sleep(PAGE_LOAD_WAIT)
+    state['last_request'] = time.monotonic()
+    if BLOCK_TITLE_MARKER in (driver.title or "").lower():
+        logger.warning(f"[{teg}] Блокировка не снялась после {MAX_BLOCK_REFRESHES} обновлений")
+
+
 from bs4 import Tag
 async def extract_image_url(item: Tag) -> Optional[str]:
     """
@@ -161,7 +225,7 @@ async def extract_image_url(item: Tag) -> Optional[str]:
     :param item: BeautifulSoup-элемент объявления
     :return: URL изображения или None, если не найдено
     """
-    img_tag = item.find('img', class_='photo-slider-image-cD891')
+    img_tag = item.find('img', attrs={'itemprop': 'image'})
     if not img_tag:
         return None
 
