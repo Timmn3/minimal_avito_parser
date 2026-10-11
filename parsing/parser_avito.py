@@ -74,8 +74,10 @@ async def load_page(driver, url: str, teg: str, gate: RequestGate, step: float,
     """
     await gate.wait(step)
     if state.get('url') == url:
+        logger.debug(f"[{teg}] запрос: refresh")
         driver.refresh()
     else:
+        logger.debug(f"[{teg}] запрос: get {url}")
         driver.get(url)
         state['url'] = url
     await asyncio.sleep(PAGE_LOAD_WAIT)
@@ -86,6 +88,7 @@ async def load_page(driver, url: str, teg: str, gate: RequestGate, step: float,
             break
         logger.warning(f"[{teg}] Страница блокировки Авито, обновляем (попытка {attempt}/{MAX_BLOCK_REFRESHES})")
         await gate.wait(step)
+        logger.debug(f"[{teg}] запрос: refresh (заглушка)")
         driver.refresh()
         await asyncio.sleep(PAGE_LOAD_WAIT)
         status, source, items = _read_page(driver)
