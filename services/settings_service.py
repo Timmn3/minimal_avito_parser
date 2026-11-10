@@ -3,6 +3,7 @@ from database.db import get_setting, set_setting
 RESTART_MINUTES = "restart_minutes"  # раз в сколько минут перезапускать браузер, 0 - не перезапускать
 QUEUE_STEP = "queue_step"            # пауза между любыми двумя запросами к Авито, сек
 LOAD_MODE = "load_mode"              # как открывать страницу на каждом шаге очереди
+CARD_INTERVAL = "card_interval"      # research: не чаще раза в столько сек заходим в карточку объявления
 
 MODE_REFRESH = "refresh"      # тот же URL - refresh(), другой - get()
 MODE_GET = "get"              # всегда get(): заход заново, без перезагрузки текущей страницы
@@ -23,6 +24,11 @@ MAX_RESTART_MINUTES = 1440
 MIN_QUEUE_STEP = 10
 MAX_QUEUE_STEP = 600
 
+# карточки Авито бережёт сильнее ленты: проба 10.11.2026 с паузой 25 сек поймала 5 заглушек из 6
+DEFAULT_CARD_INTERVAL = 240
+MIN_CARD_INTERVAL = 60
+MAX_CARD_INTERVAL = 3600
+
 
 def validate_restart_minutes(value: int) -> bool:
     return value == 0 or MIN_RESTART_MINUTES <= value <= MAX_RESTART_MINUTES
@@ -30,6 +36,10 @@ def validate_restart_minutes(value: int) -> bool:
 
 def validate_queue_step(value: int) -> bool:
     return MIN_QUEUE_STEP <= value <= MAX_QUEUE_STEP
+
+
+def validate_card_interval(value: int) -> bool:
+    return MIN_CARD_INTERVAL <= value <= MAX_CARD_INTERVAL
 
 
 async def _get_int(key: str, default: int) -> int:
@@ -51,7 +61,10 @@ async def get_queue_settings() -> dict:
         step = DEFAULT_QUEUE_STEP
     if mode not in LOAD_MODES:
         mode = DEFAULT_LOAD_MODE
-    return {"restart_minutes": restart, "queue_step": step, "load_mode": mode}
+    card = await _get_int(CARD_INTERVAL, DEFAULT_CARD_INTERVAL)
+    if not validate_card_interval(card):
+        card = DEFAULT_CARD_INTERVAL
+    return {"restart_minutes": restart, "queue_step": step, "load_mode": mode, "card_interval": card}
 
 
 async def save_restart_minutes(value: int) -> None:
@@ -60,6 +73,10 @@ async def save_restart_minutes(value: int) -> None:
 
 async def save_queue_step(value: int) -> None:
     await set_setting(QUEUE_STEP, value)
+
+
+async def save_card_interval(value: int) -> None:
+    await set_setting(CARD_INTERVAL, value)
 
 
 async def cycle_load_mode() -> str:

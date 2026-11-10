@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, ForeignKey, BigInteger
+from sqlalchemy import (Column, Integer, String, Boolean, DateTime, JSON, ForeignKey, BigInteger, Text,
+                        UniqueConstraint)
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
 
@@ -60,7 +61,45 @@ class Task(Base):
     all_ads = Column(Boolean)
     min_price = Column(Integer, nullable=True)
     max_price = Column(Integer, nullable=True)
+    # профиль товара (profiles/*.py): задан - задача research (собирает рынок), пусто - обычная «новые объявления»
+    profile = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     owner = relationship("User", back_populates="tasks")
     seen_ads = relationship("SeenAd", order_by=SeenAd.timestamp.desc(), back_populates="task")
+
+
+class Listing(Base):
+    """Объявление, собранное research-задачей: данные из ленты + (для кандидатов) из карточки."""
+    __tablename__ = 'listings'
+    __table_args__ = (UniqueConstraint('task_id', 'item_id'),)
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey('tasks.id'), nullable=False, index=True)
+    item_id = Column(String, nullable=False, index=True)
+    title = Column(String)
+    price = Column(Integer)
+    url = Column(String)
+    location = Column(String)
+    first_seen = Column(DateTime, default=datetime.utcnow)
+    last_seen = Column(DateTime, default=datetime.utcnow)
+    price_changed_at = Column(DateTime)
+    # карточка: None - не кандидат, pending - ждёт захода, ok - разобрана, failed - не удалось (после N попыток)
+    detail_status = Column(String, index=True)
+    detail_attempts = Column(Integer, default=0)
+    detail_fetched_at = Column(DateTime)
+    params = Column(JSON)        # «Состояние», «Циклов перезарядки»... как на Авито
+    description = Column(Text)
+    seller = Column(JSON)        # имя, тип, рейтинг, отзывы, год на Авито, отметки
+    posted = Column(String)      # дата публикации как на Авито («5 ноября в 14:54»)
+    views = Column(Integer)
+    notified_at = Column(DateTime)  # когда последний раз писали о нём в Telegram
+
+
+class PriceHistory(Base):
+    __tablename__ = 'price_history'
+
+    id = Column(Integer, primary_key=True)
+    listing_id = Column(Integer, ForeignKey('listings.id'), nullable=False, index=True)
+    price = Column(Integer, nullable=False)
+    seen_at = Column(DateTime, default=datetime.utcnow)
 

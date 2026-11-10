@@ -19,6 +19,7 @@ def serialize_task(task: Task) -> dict:
         "all_ads": task.all_ads,
         "min_price": task.min_price,
         "max_price": task.max_price,
+        "profile": task.profile,
     }
 
 

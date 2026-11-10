@@ -5,13 +5,17 @@ from typing import Optional
 from aiogram import Bot
 from loguru import logger
 
+from database.research_db import has_listings, mark_card_failed, next_card
 from parsing.parser_avito import (MIN_REQUEST_INTERVAL, PAGE_BLOCKED, RequestGate, check_task_page,
                                   _is_dead_session)
+from parsing.research import card_step, research_step
 from parsing.util.selenium_utils import setup_driver
+from profiles import get_profile
 from services.settings_service import get_queue_settings
 from services.task_service import load_tasks_from_db
 
 IDLE_POLL = 5  # сек. максимум между опросами БД, пока нет задач, готовых к проверке
+BLOCKED_RETRY = 300  # сек. research-страницу под заглушкой повторяем через столько, а не через час
 
 
 def task_interval(task: dict) -> float:
@@ -53,6 +57,9 @@ class TaskManager:
         self.driver = None
         self.driver_started = 0.0
         self.page_state: dict = {'url': None}
+        # research: task_id -> (страница текущего прохода, первый ли это проход задачи)
+        self.research_pass: dict = {}
+        self.last_card = float("-inf")  # time.monotonic() последнего захода в карточку
 
     def _close_driver(self) -> None:
         if self.driver is not None:
@@ -101,11 +108,17 @@ class TaskManager:
 
         task, wait_for = pick_due_task(tasks, self.last_check, time.monotonic())
         if task is None:
+            if await self._maybe_card(tasks, settings):
+                return
             await asyncio.sleep(min(max(wait_for, 1), IDLE_POLL))
             return
 
         if self.driver is None:
             self._open_driver()
+
+        if get_profile(task.get("profile")):
+            await self._research(task, settings)
+            return
 
         teg = task["teg"]
         page = self.next_page.get(task["id"], 0)
@@ -117,14 +130,69 @@ class TaskManager:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            if "script timeout" in str(e):
-                logger.warning(f"[{teg}] Таймаут при загрузке страницы")
-            elif _is_dead_session(e):
-                logger.warning(f"[{teg}] Браузер закрыт/упал, запускаем заново ({str(e).splitlines()[0]})")
-                self._close_driver()
-            else:
-                logger.error(f"[{teg}] Ошибка при обработке: {e}")
+            self._handle_error(teg, e)
         finally:
             # отсчёт интервала задачи - от последнего реального запроса, даже если шаг закончился ошибкой
-            last_request = self.gate.last_request
-            self.last_check[task["id"]] = last_request if last_request != float("-inf") else time.monotonic()
+            self.last_check[task["id"]] = self._last_request()
+
+    def _last_request(self) -> float:
+        last_request = self.gate.last_request
+        return last_request if last_request != float("-inf") else time.monotonic()
+
+    def _handle_error(self, teg: str, e: Exception) -> None:
+        if "script timeout" in str(e):
+            logger.warning(f"[{teg}] Таймаут при загрузке страницы")
+        elif _is_dead_session(e):
+            logger.warning(f"[{teg}] Браузер закрыт/упал, запускаем заново ({str(e).splitlines()[0]})")
+            self._close_driver()
+        else:
+            logger.error(f"[{teg}] Ошибка при обработке: {e}")
+
+    async def _research(self, task: dict, settings: dict) -> None:
+        """
+        Шаг прохода research-задачи. Пока проход не закончен, задача остаётся первой в очереди
+        (last_check = -inf), и следующая страница идёт следующим шагом. Конец прохода - отсчёт интервала.
+        """
+        task_id, teg = task["id"], task["teg"]
+        if task_id not in self.research_pass:
+            self.research_pass[task_id] = (0, not await has_listings(task_id))
+        page, first = self.research_pass[task_id]
+        status, more = PAGE_BLOCKED, False
+        try:
+            status, more = await research_step(self.driver, task, page, first, self.gate, settings["queue_step"],
+                                               self.page_state, settings["load_mode"])
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self._handle_error(teg, e)
+            status = "error"
+        if more:
+            self.research_pass[task_id] = (page + 1, first)
+            self.last_check[task_id] = float("-inf")
+        elif status in (PAGE_BLOCKED, "error"):
+            # ту же страницу повторим через BLOCKED_RETRY, проход не сбрасываем
+            self.last_check[task_id] = time.monotonic() - task_interval(task) + BLOCKED_RETRY
+        else:
+            self.research_pass.pop(task_id, None)
+            self.last_check[task_id] = self._last_request()
+
+    async def _maybe_card(self, tasks: list, settings: dict) -> bool:
+        """Пока ни одна задача не ждёт, заходим в одну карточку кандидата (не чаще card_interval)."""
+        if time.monotonic() - self.last_card < settings["card_interval"]:
+            return False
+        profiles = {t["id"]: get_profile(t.get("profile")) for t in tasks if get_profile(t.get("profile"))}
+        listing = await next_card(profiles)
+        if listing is None:
+            return False
+        if self.driver is None:
+            self._open_driver()
+        self.last_card = time.monotonic()
+        try:
+            await card_step(self.driver, listing, self.gate, settings["queue_step"], self.page_state,
+                            settings["load_mode"])
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self._handle_error(f"card {listing['item_id']}", e)
+            await mark_card_failed(listing["id"])  # иначе битая карточка будет выбираться вечно
+        return True
