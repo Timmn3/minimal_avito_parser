@@ -146,3 +146,8 @@ def test_satisfactory_condition_and_wear_in_description_are_soft():
     r4 = row("MacBook Pro 14 M5 24/1TB", 150000, desc="Состояние идеальное, без царапин и потертостей, царапин нет")
     ev4 = evaluate(r4, p, MEDIANS)
     assert ev4["soft"] == [] and worth_notifying(r4, ev4)
+
+
+def test_mdm_in_title_is_flagged():
+    from profiles.description import analyze
+    assert analyze("Macbook Pro 14 M4Pro 12c/16g 24/512/37ц MDM")["broken"]

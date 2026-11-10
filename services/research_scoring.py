@@ -71,8 +71,10 @@ def evaluate(row: Listing, profile: ModuleType, group_medians: dict) -> dict:
         insights = analyze_description(desc)
         if insights["repair"]:
             flags.append(f"следы ремонта/вскрытия: «{insights['repair'][0]}»")
-        if insights["broken"]:
-            flags.append(f"возможна неисправность/блокировка: «{insights['broken'][0]}»")
+        # «MDM» часто стоит в заголовке, а не в тексте - смотрим и туда
+        broken = insights["broken"] + analyze_description(row.title)["broken"]
+        if broken:
+            flags.append(f"возможна неисправность/блокировка: «{broken[0]}»")
         if insights["surcharge_pct"] and row.price:
             real = round(row.price * (1 + insights["surcharge_pct"] / 100))
             # справка, не флаг: за наличные в Москве цена та же (решение Мишани 10.11.2026)
