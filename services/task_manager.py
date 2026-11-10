@@ -1,4 +1,5 @@
 import asyncio
+import random
 import time
 from typing import Optional
 
@@ -16,6 +17,7 @@ from services.task_service import load_tasks_from_db
 
 IDLE_POLL = 5  # сек. максимум между опросами БД, пока нет задач, готовых к проверке
 BLOCKED_RETRY = 300  # сек. research-страницу под заглушкой повторяем через столько, а не через час
+CARD_JITTER = 0.25  # разброс паузы между карточками (±25%): ровный метроном выглядит как бот
 
 
 def task_interval(task: dict) -> float:
@@ -60,6 +62,7 @@ class TaskManager:
         # research: task_id -> (страница текущего прохода, первый ли это проход задачи)
         self.research_pass: dict = {}
         self.last_card = float("-inf")  # time.monotonic() последнего захода в карточку
+        self.card_wait = 0.0            # сколько ждать после него до следующей (интервал с разбросом)
 
     def _close_driver(self) -> None:
         if self.driver is not None:
@@ -178,7 +181,7 @@ class TaskManager:
 
     async def _maybe_card(self, tasks: list, settings: dict) -> bool:
         """Пока ни одна задача не ждёт, заходим в одну карточку кандидата (не чаще card_interval)."""
-        if time.monotonic() - self.last_card < settings["card_interval"]:
+        if time.monotonic() - self.last_card < self.card_wait:
             return False
         profiles = {t["id"]: get_profile(t.get("profile")) for t in tasks if get_profile(t.get("profile"))}
         listing = await next_card(profiles)
@@ -187,6 +190,7 @@ class TaskManager:
         if self.driver is None:
             self._open_driver()
         self.last_card = time.monotonic()
+        self.card_wait = settings["card_interval"] * random.uniform(1 - CARD_JITTER, 1 + CARD_JITTER)
         try:
             await card_step(self.driver, listing, self.gate, settings["queue_step"], self.page_state,
                             settings["load_mode"], self.bot)

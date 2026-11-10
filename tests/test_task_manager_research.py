@@ -69,3 +69,22 @@ def test_card_only_when_interval_passed(monkeypatch):
     assert asyncio.run(m._maybe_card([TASK, notify_task], SETTINGS))
     assert not asyncio.run(m._maybe_card([TASK, notify_task], SETTINGS))  # рано
     assert done == ["42"]
+
+
+def test_card_wait_has_jitter_within_bounds(monkeypatch):
+    m, _ = make_manager(monkeypatch, [])
+
+    async def fake_next(profiles):
+        return {"id": 1, "item_id": "42", "url": "u", "task_id": 7}
+
+    async def fake_card(*args, **kwargs):
+        return True
+
+    monkeypatch.setattr(tm, "next_card", fake_next)
+    monkeypatch.setattr(tm, "card_step", fake_card)
+    waits = set()
+    for _ in range(20):
+        m.last_card = float("-inf")
+        asyncio.run(m._maybe_card([TASK], dict(SETTINGS, card_interval=120)))
+        waits.add(round(m.card_wait, 3))
+    assert all(90 <= w <= 150 for w in waits) and len(waits) > 1
