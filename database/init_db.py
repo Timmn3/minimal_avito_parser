@@ -16,7 +16,7 @@ SCHEMA_PATCHES = (
     # идемпотентная уборка: ждущие клоны уже разобранных объявлений (тот же заголовок, цена и место) - dup
     "UPDATE listings l SET detail_status = 'dup' WHERE l.detail_status = 'pending' AND EXISTS ("
     "SELECT 1 FROM listings o WHERE o.task_id = l.task_id AND o.id <> l.id AND o.detail_status IN ('ok', 'gone') "
-    "AND o.feed_title = l.feed_title AND o.feed_price = l.feed_price AND o.location IS NOT DISTINCT FROM l.location)",
+    "AND lower(o.feed_title) = lower(l.feed_title) AND o.feed_price = l.feed_price AND o.location IS NOT DISTINCT FROM l.location)",
 )
 
 

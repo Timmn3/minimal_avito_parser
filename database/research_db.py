@@ -3,7 +3,7 @@ from datetime import datetime
 from types import ModuleType
 from typing import Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from database.models import Listing, PriceHistory
 from database.session import get_session
@@ -28,6 +28,7 @@ async def upsert_page(task_id: int, items: list[dict], profile: Optional[ModuleT
         done_keys = set((await session.execute(
             select(Listing.feed_title, Listing.feed_price, Listing.location)
             .where(Listing.task_id == task_id, Listing.detail_status.in_(('ok', 'gone'))))).all())
+        done_keys = {((t or '').lower(), p, loc) for t, p, loc in done_keys}
         for it in items:
             row = existing.get(it['item_id'])
             if row is None:
@@ -35,7 +36,7 @@ async def upsert_page(task_id: int, items: list[dict], profile: Optional[ModuleT
                 status = None
                 if candidate:
                     # продавцы клонируют объявления: тот же заголовок, цена и место, что у уже разобранного - дубль
-                    status = 'dup' if (it['title'], it['price'], it['location']) in done_keys else 'pending'
+                    status = 'dup' if ((it['title'] or '').lower(), it['price'], it['location']) in done_keys else 'pending'
                 row = Listing(task_id=task_id, item_id=it['item_id'], title=it['title'], price=it['price'],
                               url=it['url'], location=it['location'], first_seen=now, last_seen=now,
                               feed_title=it['title'], feed_price=it['price'],
@@ -82,10 +83,10 @@ async def next_card(task_profiles: dict[int, ModuleType], exclude: frozenset = f
         return None
     group_medians = {tid: await medians(tid, prof) for tid, prof in task_profiles.items()}
     async with get_session() as session:
-        handled = set((await session.execute(
+        handled = {(tid, (t or '').lower(), p) for tid, t, p in (await session.execute(
             select(Listing.task_id, Listing.feed_title, Listing.feed_price)
             .where(Listing.task_id.in_(task_profiles.keys()),
-                   Listing.detail_status.in_(('ok', 'gone', 'dup'))))).all())
+                   Listing.detail_status.in_(('ok', 'gone', 'dup'))))).all()}
 
     def rank(row: Listing):
         profile = task_profiles[row.task_id]
@@ -97,7 +98,7 @@ async def next_card(task_profiles: dict[int, ModuleType], exclude: frozenset = f
                 return None
         # клон уже разобранного объявления (тот же заголовок и цена, чаще всего тот же магазин в другом городе)
         # идёт после всех уникальных; продавца узнаем из карточки, там он и станет dup
-        clone = 10 if (row.task_id, row.feed_title, row.feed_price) in handled else 0
+        clone = 10 if (row.task_id, (row.feed_title or '').lower(), row.feed_price) in handled else 0
         return {"A": 0, "?": 1, "B": 2}.get(tier, 3) + clone, -row.first_seen.timestamp()
 
     ranked = [(r, rank(r)) for r in rows if r.id not in exclude]  # exclude - недавно заблокированные
@@ -117,7 +118,7 @@ async def save_card(listing_id: int, card: dict) -> None:
         await session.execute(
             update(Listing).where(
                 Listing.task_id == row.task_id, Listing.id != row.id, Listing.detail_status == 'pending',
-                Listing.feed_title == row.feed_title, Listing.feed_price == row.feed_price,
+                func.lower(Listing.feed_title) == (row.feed_title or '').lower(), Listing.feed_price == row.feed_price,
                 Listing.location == row.location).values(detail_status='dup'))
         row.detail_status = 'gone' if card.get('closed') else 'ok'
         row.detail_fetched_at = now
@@ -170,7 +171,7 @@ async def _has_seller_twin(session, row: Listing) -> bool:
         return False
     twins = (await session.execute(
         select(Listing).where(Listing.task_id == row.task_id, Listing.id != row.id,
-                              Listing.feed_title == row.feed_title, Listing.feed_price == row.feed_price,
+                              func.lower(Listing.feed_title) == row.feed_title.lower(), Listing.feed_price == row.feed_price,
                               Listing.detail_status == 'ok'))).scalars().all()
     mine = _seller_id(row.seller)
     return mine is not None and any(_seller_id(t.seller) == mine for t in twins)
@@ -191,7 +192,7 @@ async def dedupe_done_listings() -> int:
             seller = _seller_id(row.seller)
             if seller is None:
                 continue
-            key = (row.task_id, row.feed_title, row.feed_price, seller)
+            key = (row.task_id, row.feed_title.lower(), row.feed_price, seller)
             if key in seen:
                 row.detail_status = 'dup'
                 marked += 1
