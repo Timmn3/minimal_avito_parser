@@ -13,6 +13,7 @@ from database.db import async_session
 from database.init_db import init_db
 from database.session import engine as db_engine
 from database.models import Task
+from profiles import PROFILES
 from services.task_manager import TaskManager
 from handlers.start import router as start_router
 from handlers.menu import router as menu_router
@@ -51,18 +52,22 @@ async def _startup_message() -> str:
         async with async_session() as session:
             active_tasks = (await session.execute(
                 select(func.count()).select_from(Task).where(Task.activity.is_(True)))).scalar()
+            research_tasks = (await session.execute(
+                select(func.count()).select_from(Task)
+                .where(Task.activity.is_(True), Task.profile.is_not(None)))).scalar()
     except Exception as e:
         logger.warning(f"Не удалось посчитать активные задачи: {e}")
-        active_tasks = "?"
+        active_tasks = research_tasks = "?"
 
     try:
         s = await get_queue_settings()
         restart = f"каждые {s['restart_minutes']} мин" if s["restart_minutes"] else "не перезапускать"
         step = f"{s['queue_step']} сек"
         mode = LOAD_MODE_TITLES[s["load_mode"]]
+        card = f"раз в {s['card_interval']} сек"
     except Exception as e:
         logger.warning(f"Не удалось прочитать настройки: {e}")
-        restart = step = mode = "?"
+        restart = step = mode = card = "?"
 
     return (
         f"🚀 {get_version()}\n"
@@ -74,7 +79,9 @@ async def _startup_message() -> str:
         f"🔄 Перезапуск браузера: {restart}\n"
         f"🔁 Режим загрузки: {mode}\n"
         f"⏱ Шаг очереди запросов: {step} (одна задача - не чаще раза в {MIN_REQUEST_INTERVAL} сек)\n"
-        f"📋 Активных задач: {active_tasks}"
+        f"📋 Активных задач: {active_tasks} (из них research: {research_tasks})\n"
+        f"🔎 Профили товаров: {', '.join(PROFILES)}\n"
+        f"🗂 Карточки research: {card}"
     )
 
 
