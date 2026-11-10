@@ -160,7 +160,7 @@ class TaskManager:
         status, more = PAGE_BLOCKED, False
         try:
             status, more = await research_step(self.driver, task, page, first, self.gate, settings["queue_step"],
-                                               self.page_state, settings["load_mode"])
+                                               self.page_state, settings["load_mode"], self.bot)
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -189,7 +189,7 @@ class TaskManager:
         self.last_card = time.monotonic()
         try:
             await card_step(self.driver, listing, self.gate, settings["queue_step"], self.page_state,
-                            settings["load_mode"])
+                            settings["load_mode"], self.bot)
         except asyncio.CancelledError:
             raise
         except Exception as e:

@@ -12,15 +12,15 @@ MAX_CARD_ATTEMPTS = 3  # после стольких неудачных захо
 CARD_QUEUE_SCAN = 300  # сколько pending-кандидатов смотрим при выборе следующей карточки
 
 
-async def upsert_page(task_id: int, items: list[dict], profile: Optional[ModuleType]) -> tuple[int, int]:
+async def upsert_page(task_id: int, items: list[dict], profile: Optional[ModuleType]) -> tuple[int, list]:
     """
     Пишет объявления страницы ленты. Новые кандидаты профиля встают в очередь карточек.
-    Возвращает (новых, с изменившейся ценой).
+    Возвращает (число новых, [(listing_id, старая цена, новая цена)] для изменившихся цен).
     """
     if not items:
-        return 0, 0
+        return 0, []
     now = datetime.utcnow()
-    new = changed = 0
+    new, changed = 0, []
     async with get_session() as session:
         ids = [i['item_id'] for i in items]
         existing = {l.item_id: l for l in (await session.execute(
@@ -42,9 +42,9 @@ async def upsert_page(task_id: int, items: list[dict], profile: Optional[ModuleT
             row.title = it['title'] or row.title
             if it['price'] and it['price'] != row.price:
                 session.add(PriceHistory(listing_id=row.id, price=it['price'], seen_at=now))
+                changed.append((row.id, row.price, it['price']))
                 row.price = it['price']
                 row.price_changed_at = now
-                changed += 1
         await session.commit()
     return new, changed
 

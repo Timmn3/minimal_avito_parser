@@ -4,6 +4,7 @@ RESTART_MINUTES = "restart_minutes"  # раз в сколько минут пе�
 QUEUE_STEP = "queue_step"            # пауза между любыми двумя запросами к Авито, сек
 LOAD_MODE = "load_mode"              # как открывать страницу на каждом шаге очереди
 CARD_INTERVAL = "card_interval"      # research: не чаще раза в столько сек заходим в карточку объявления
+RESEARCH_NOTIFY = "research_notify"  # research: слать ли находки в Telegram ("1"/"0"), по умолчанию выключено
 
 MODE_REFRESH = "refresh"      # тот же URL - refresh(), другой - get()
 MODE_GET = "get"              # всегда get(): заход заново, без перезагрузки текущей страницы
@@ -85,3 +86,11 @@ async def cycle_load_mode() -> str:
     new = LOAD_MODES[(LOAD_MODES.index(current) + 1) % len(LOAD_MODES)]
     await set_setting(LOAD_MODE, new)
     return new
+
+
+async def get_research_notify() -> bool:
+    return (await get_setting(RESEARCH_NOTIFY, "0")) == "1"
+
+
+async def save_research_notify(on: bool) -> None:
+    await set_setting(RESEARCH_NOTIFY, "1" if on else "0")

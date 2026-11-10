@@ -11,7 +11,7 @@ TASK = {"id": 7, "teg": "mbp", "profile": "macbook_pro_14", "time_repeat": 3600,
 def make_manager(monkeypatch, pages, has=False):
     calls = []
 
-    async def fake_step(driver, task, page, first, gate, step, state, mode):
+    async def fake_step(driver, task, page, first, gate, step, state, mode, bot=None):
         calls.append((page, first))
         return pages[len(calls) - 1]
 
@@ -59,7 +59,7 @@ def test_card_only_when_interval_passed(monkeypatch):
         assert list(profiles) == [7]
         return {"id": 1, "item_id": "42", "url": "u", "task_id": 7}
 
-    async def fake_card(driver, listing, gate, step, state, mode):
+    async def fake_card(driver, listing, gate, step, state, mode, bot=None):
         done.append(listing["item_id"])
         return True
 

@@ -13,6 +13,7 @@ from loguru import logger
 from database.research_db import save_card, mark_card_failed, upsert_page
 from parsing.parser_avito import PAGE_BLOCKED, RequestGate, load_page, BLOCK_COOLDOWN, SOFT_BLOCK_PAUSE
 from profiles import get_profile
+from services.research_notify import after_card, after_price_changes
 
 FIRST_PASS_PAGES = 25  # первый проход набирает весь рынок для медиан (MacBook 14" 120-180 тыс. - 1 250 объявлений)
 MAX_PASS_PAGES = 5     # обычный проход: листаем, пока есть невиденные, но не дальше
@@ -102,7 +103,7 @@ def parse_card(soup: BeautifulSoup) -> Optional[dict]:
 
 
 async def research_step(driver, task: dict, page_index: int, first_pass: bool, gate: RequestGate,
-                        step: float, state: dict, mode: str) -> tuple[str, bool]:
+                        step: float, state: dict, mode: str, bot=None) -> tuple[str, bool]:
     """
     Одна страница прохода research-задачи. Возвращает (статус страницы, листать ли дальше).
     Дальше листаем, пока на странице есть невиденные объявления и не упёрлись в потолок страниц.
@@ -118,18 +119,20 @@ async def research_step(driver, task: dict, page_index: int, first_pass: bool, g
         gate.cooldown(SOFT_BLOCK_PAUSE)
 
     items = parse_list_page(soup)
-    new, changed = await upsert_page(task['id'], items, profile)
+    new, changes = await upsert_page(task['id'], items, profile)
+    await after_price_changes(bot, task, changes)
     limit = FIRST_PASS_PAGES if first_pass else MAX_PASS_PAGES
     more = bool(items) and new > 0 and page_index + 1 < limit
     logger.info(f"[{teg}] research стр. {page_index + 1}: объявлений {len(items)}, новых {new}, "
-                f"цена изменилась {changed}" + (", листаем дальше" if more else ""))
+                f"цена изменилась {len(changes)}" + (", листаем дальше" if more else ""))
     if new and page_index + 1 >= limit and new == len(items):
         logger.warning(f"[{teg}] Упёрлись в потолок {limit} стр., а невиденные ещё идут: "
                        f"интервал великоват или поиск слишком широкий")
     return status, more
 
 
-async def card_step(driver, listing: dict, gate: RequestGate, step: float, state: dict, mode: str) -> bool:
+async def card_step(driver, listing: dict, gate: RequestGate, step: float, state: dict, mode: str,
+                    bot=None) -> bool:
     """Заход в карточку кандидата. True - разобрана и сохранена."""
     teg = f"card {listing['item_id']}"
     status, soup = await load_page(driver, listing['url'], teg, gate, step, state, mode)
@@ -139,9 +142,11 @@ async def card_step(driver, listing: dict, gate: RequestGate, step: float, state
     elif status != "ok":
         gate.cooldown(SOFT_BLOCK_PAUSE)
     if card is None:
-        await mark_card_failed(listing['id'])
+        if status != PAGE_BLOCKED:  # бан по IP - не вина карточки, попытку не списываем
+            await mark_card_failed(listing['id'])
         logger.warning(f"[{teg}] карточка не разобрана ({status})")
         return False
     await save_card(listing['id'], card)
     logger.info(f"[{teg}] карточка: {card['title'][:60]} | {card['price']} | параметров {len(card['params'])}")
+    await after_card(bot, listing['id'])
     return True
