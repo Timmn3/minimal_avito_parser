@@ -25,13 +25,21 @@ async def upsert_page(task_id: int, items: list[dict], profile: Optional[ModuleT
         ids = [i['item_id'] for i in items]
         existing = {l.item_id: l for l in (await session.execute(
             select(Listing).where(Listing.task_id == task_id, Listing.item_id.in_(ids)))).scalars()}
+        done_keys = set((await session.execute(
+            select(Listing.feed_title, Listing.feed_price, Listing.location)
+            .where(Listing.task_id == task_id, Listing.detail_status.in_(('ok', 'gone'))))).all())
         for it in items:
             row = existing.get(it['item_id'])
             if row is None:
                 candidate = profile is not None and profile.prefilter(it['title'], it['price'])
+                status = None
+                if candidate:
+                    # продавцы клонируют объявления: тот же заголовок, цена и место, что у уже разобранного - дубль
+                    status = 'dup' if (it['title'], it['price'], it['location']) in done_keys else 'pending'
                 row = Listing(task_id=task_id, item_id=it['item_id'], title=it['title'], price=it['price'],
                               url=it['url'], location=it['location'], first_seen=now, last_seen=now,
-                              detail_status='pending' if candidate else None, detail_attempts=0)
+                              feed_title=it['title'], feed_price=it['price'],
+                              detail_status=status, detail_attempts=0)
                 session.add(row)
                 await session.flush()
                 if it['price']:
@@ -98,6 +106,11 @@ async def save_card(listing_id: int, card: dict) -> None:
         row = await session.get(Listing, listing_id)
         if row is None:
             return
+        await session.execute(
+            update(Listing).where(
+                Listing.task_id == row.task_id, Listing.id != row.id, Listing.detail_status == 'pending',
+                Listing.feed_title == row.feed_title, Listing.feed_price == row.feed_price,
+                Listing.location == row.location).values(detail_status='dup'))
         row.detail_status = 'gone' if card.get('closed') else 'ok'
         row.detail_fetched_at = now
         row.params = card['params']

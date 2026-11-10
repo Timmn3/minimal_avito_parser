@@ -40,7 +40,7 @@ async def medians(task_id: int, profile: ModuleType) -> dict[str, tuple[int, int
                                   Listing.price.is_not(None)))).scalars().all()
     groups: dict[str, list[int]] = {}
     for row in rows:
-        if row.detail_status == 'gone':
+        if row.detail_status in ('gone', 'dup'):  # дубли не должны утяжелять медиану
             continue
         key = profile.group_key(specs_of(row, profile))
         if key:
