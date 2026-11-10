@@ -55,7 +55,7 @@ def test_card_only_when_interval_passed(monkeypatch):
     m, _ = make_manager(monkeypatch, [])
     done = []
 
-    async def fake_next(profiles):
+    async def fake_next(profiles, exclude=frozenset()):
         assert list(profiles) == [7]
         return {"id": 1, "item_id": "42", "url": "u", "task_id": 7}
 
@@ -74,11 +74,11 @@ def test_card_only_when_interval_passed(monkeypatch):
 def test_card_wait_has_jitter_within_bounds(monkeypatch):
     m, _ = make_manager(monkeypatch, [])
 
-    async def fake_next(profiles):
+    async def fake_next(profiles, exclude=frozenset()):
         return {"id": 1, "item_id": "42", "url": "u", "task_id": 7}
 
     async def fake_card(*args, **kwargs):
-        return True
+        return 'ok'
 
     monkeypatch.setattr(tm, "next_card", fake_next)
     monkeypatch.setattr(tm, "card_step", fake_card)
@@ -88,3 +88,27 @@ def test_card_wait_has_jitter_within_bounds(monkeypatch):
         asyncio.run(m._maybe_card([TASK], dict(SETTINGS, card_interval=120)))
         waits.add(round(m.card_wait, 3))
     assert all(90 <= w <= 150 for w in waits) and len(waits) > 1
+
+
+def test_blocked_card_is_skipped_for_a_while(monkeypatch):
+    m, _ = make_manager(monkeypatch, [])
+    seen_exclude = []
+
+    async def fake_next(profiles, exclude=frozenset()):
+        seen_exclude.append(set(exclude))
+        return {"id": 5, "item_id": "42", "url": "u", "task_id": 7}
+
+    async def fake_card(*args, **kwargs):
+        return 'blocked'
+
+    monkeypatch.setattr(tm, "next_card", fake_next)
+    monkeypatch.setattr(tm, "card_step", fake_card)
+    asyncio.run(m._maybe_card([TASK], SETTINGS))
+    assert 5 in m.card_skip and m.card_skip[5] > time.monotonic() + tm.CARD_RETRY_AFTER - 5
+    m.last_card = float("-inf")
+    asyncio.run(m._maybe_card([TASK], SETTINGS))
+    assert seen_exclude[-1] == {5}   # заблокированную карточку не предлагаем повторно
+    m.card_skip[5] = time.monotonic() - 1
+    m.last_card = float("-inf")
+    asyncio.run(m._maybe_card([TASK], SETTINGS))
+    assert seen_exclude[-1] == set()  # срок вышел - снова в очереди

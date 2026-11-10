@@ -76,7 +76,8 @@ def _clear_session(driver) -> None:
 
 
 async def load_page(driver, url: str, teg: str, gate: RequestGate, step: float, state: dict,
-                    mode: str = MODE_REFRESH, listing: bool = True) -> tuple[str, Optional[BeautifulSoup]]:
+                    mode: str = MODE_REFRESH, listing: bool = True,
+                    max_refreshes: int = MAX_BLOCK_REFRESHES) -> tuple[str, Optional[BeautifulSoup]]:
     """
     Загружает страницу в той же вкладке. Режим mode: refresh - тот же URL обновляем, другой открываем;
     get - всегда открываем заново; get_clean - открываем заново, предварительно почистив cookies и кэш.
@@ -97,10 +98,10 @@ async def load_page(driver, url: str, teg: str, gate: RequestGate, step: float, 
     await asyncio.sleep(PAGE_LOAD_WAIT)
 
     status, source, items = _read_page(driver)
-    for attempt in range(1, MAX_BLOCK_REFRESHES + 1):
+    for attempt in range(1, max_refreshes + 1):
         if status != PAGE_BLOCKED:
             break
-        logger.warning(f"[{teg}] Страница блокировки Авито, обновляем (попытка {attempt}/{MAX_BLOCK_REFRESHES})")
+        logger.warning(f"[{teg}] Страница блокировки Авито, обновляем (попытка {attempt}/{max_refreshes})")
         await gate.wait(step)
         logger.debug(f"[{teg}] запрос: refresh (заглушка)")
         driver.refresh()
@@ -108,7 +109,7 @@ async def load_page(driver, url: str, teg: str, gate: RequestGate, step: float, 
         status, source, items = _read_page(driver)
 
     if status == PAGE_BLOCKED:
-        logger.warning(f"[{teg}] Блокировка не снялась после {MAX_BLOCK_REFRESHES} обновлений")
+        logger.warning(f"[{teg}] Блокировка не снялась после {max_refreshes} обновлений")
         return status, None
     soup = BeautifulSoup(source, "html.parser")
     top = []

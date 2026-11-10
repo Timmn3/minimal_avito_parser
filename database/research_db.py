@@ -63,7 +63,7 @@ async def has_listings(task_id: int) -> bool:
             select(Listing.id).where(Listing.task_id == task_id).limit(1))).first() is not None
 
 
-async def next_card(task_profiles: dict[int, ModuleType]) -> Optional[dict]:
+async def next_card(task_profiles: dict[int, ModuleType], exclude: frozenset = frozenset()) -> Optional[dict]:
     """
     Следующая карточка для захода среди активных research-задач: приоритет профиля
     (вероятные цели первыми), внутри - самые свежие. Кандидатов B, чья цена по ленте выше порога
@@ -100,7 +100,7 @@ async def next_card(task_profiles: dict[int, ModuleType]) -> Optional[dict]:
         clone = 10 if (row.task_id, row.feed_title, row.feed_price) in handled else 0
         return {"A": 0, "?": 1, "B": 2}.get(tier, 3) + clone, -row.first_seen.timestamp()
 
-    ranked = [(r, rank(r)) for r in rows]
+    ranked = [(r, rank(r)) for r in rows if r.id not in exclude]  # exclude - недавно заблокированные
     ranked = [(r, k) for r, k in ranked if k is not None]
     if not ranked:
         return None

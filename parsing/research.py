@@ -18,6 +18,10 @@ from services.research_notify import after_card, after_price_changes
 FIRST_PASS_PAGES = 25  # первый проход набирает весь рынок для медиан (MacBook 14" 120-180 тыс. - 1 250 объявлений)
 MAX_PASS_PAGES = 5     # обычный проход: листаем, пока есть невиденные, но не дальше
 PAGE_STEP = 30         # сек. минимум между страницами research, даже если шаг очереди меньше
+CARD_MAX_REFRESHES = 2  # карточку под жёсткой заглушкой обновляем не больше стольких раз и отпускаем: каждый запрос
+                        # - отдельный бросок кубика (проба 10.11.2026: ~60% открываются), другая карточка не хуже той же
+CARD_BLOCK_COOLDOWN = 30  # сек. пауза очереди после неснятой жёсткой заглушки на карточке (у ленты - 180)
+# мягкая заглушка поверх карточки: данные под ней есть и разбираются, паузу очереди не берём
 
 
 def _digits(text: str) -> Optional[int]:
@@ -132,21 +136,22 @@ async def research_step(driver, task: dict, page_index: int, first_pass: bool, g
 
 
 async def card_step(driver, listing: dict, gate: RequestGate, step: float, state: dict, mode: str,
-                    bot=None) -> bool:
-    """Заход в карточку кандидата. True - разобрана и сохранена."""
+                    bot=None) -> str:
+    """Заход в карточку кандидата. Возвращает 'ok' (сохранена), 'blocked' (жёсткая заглушка, вернуть в очередь
+    без штрафа) или 'failed' (страница есть, но карточка не разобрана - попытка списана)."""
     teg = f"card {listing['item_id']}"
-    status, soup = await load_page(driver, listing['url'], teg, gate, step, state, mode, listing=False)
+    status, soup = await load_page(driver, listing['url'], teg, gate, step, state, mode, listing=False,
+                                   max_refreshes=CARD_MAX_REFRESHES)
     card = parse_card(soup) if soup is not None else None
     if status == PAGE_BLOCKED:
-        gate.cooldown(BLOCK_COOLDOWN)
-    elif status != "ok":
-        gate.cooldown(SOFT_BLOCK_PAUSE)
+        gate.cooldown(CARD_BLOCK_COOLDOWN)
+        logger.warning(f"[{teg}] жёсткая заглушка, карточка вернётся в очередь позже")
+        return 'blocked'
     if card is None:
-        if status != PAGE_BLOCKED:  # бан по IP - не вина карточки, попытку не списываем
-            await mark_card_failed(listing['id'])
+        await mark_card_failed(listing['id'])
         logger.warning(f"[{teg}] карточка не разобрана ({status})")
-        return False
+        return 'failed'
     await save_card(listing['id'], card)
     logger.info(f"[{teg}] карточка: {card['title'][:60]} | {card['price']} | параметров {len(card['params'])}")
     await after_card(bot, listing['id'])
-    return True
+    return 'ok'

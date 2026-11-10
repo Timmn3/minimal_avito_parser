@@ -27,7 +27,7 @@ MAX_QUEUE_STEP = 600
 
 # карточки Авито бережёт сильнее ленты: проба 10.11.2026 с паузой 25 сек поймала 5 заглушек из 6
 DEFAULT_CARD_INTERVAL = 240
-MIN_CARD_INTERVAL = 60
+MIN_CARD_INTERVAL = 15
 MAX_CARD_INTERVAL = 3600
 
 

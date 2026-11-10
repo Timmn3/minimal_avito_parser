@@ -17,6 +17,7 @@ from services.task_service import load_tasks_from_db
 
 IDLE_POLL = 5  # сек. максимум между опросами БД, пока нет задач, готовых к проверке
 BLOCKED_RETRY = 300  # сек. research-страницу под заглушкой повторяем через столько, а не через час
+CARD_RETRY_AFTER = 600  # сек. карточку, не открывшуюся из-за жёсткой заглушки, не берём повторно столько времени
 CARD_JITTER = 0.25  # разброс паузы между карточками (±25%): ровный метроном выглядит как бот
 
 
@@ -62,6 +63,7 @@ class TaskManager:
         # research: task_id -> (страница текущего прохода, первый ли это проход задачи)
         self.research_pass: dict = {}
         self.last_card = float("-inf")  # time.monotonic() последнего захода в карточку
+        self.card_skip: dict = {}       # listing_id -> до какого monotonic не брать (недавно заблокирована)
         self.card_wait = 0.0            # сколько ждать после него до следующей (интервал с разбросом)
 
     def _close_driver(self) -> None:
@@ -184,7 +186,9 @@ class TaskManager:
         if time.monotonic() - self.last_card < self.card_wait:
             return False
         profiles = {t["id"]: get_profile(t.get("profile")) for t in tasks if get_profile(t.get("profile"))}
-        listing = await next_card(profiles)
+        now = time.monotonic()
+        self.card_skip = {k: v for k, v in self.card_skip.items() if v > now}
+        listing = await next_card(profiles, frozenset(self.card_skip))
         if listing is None:
             return False
         if self.driver is None:
@@ -192,8 +196,10 @@ class TaskManager:
         self.last_card = time.monotonic()
         self.card_wait = settings["card_interval"] * random.uniform(1 - CARD_JITTER, 1 + CARD_JITTER)
         try:
-            await card_step(self.driver, listing, self.gate, settings["queue_step"], self.page_state,
-                            settings["load_mode"], self.bot)
+            result = await card_step(self.driver, listing, self.gate, settings["queue_step"], self.page_state,
+                                     settings["load_mode"], self.bot)
+            if result == 'blocked':
+                self.card_skip[listing["id"]] = time.monotonic() + CARD_RETRY_AFTER
         except asyncio.CancelledError:
             raise
         except Exception as e:
