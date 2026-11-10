@@ -164,3 +164,28 @@ async def _has_seller_twin(session, row: Listing) -> bool:
                               Listing.detail_status == 'ok'))).scalars().all()
     mine = _seller_id(row.seller)
     return mine is not None and any(_seller_id(t.seller) == mine for t in twins)
+
+
+async def dedupe_done_listings() -> int:
+    """
+    Уборка при старте: среди уже разобранных объявлений клоны одного продавца (тот же заголовок ленты, цена
+    и продавец) помечаются dup, остаётся самое раннее. Нужна для карточек, разобранных до появления проверки
+    близнецов в save_card. Идемпотентна. Возвращает, сколько объявлений стало дублями.
+    """
+    async with get_session() as session:
+        rows = (await session.execute(
+            select(Listing).where(Listing.detail_status == 'ok', Listing.feed_title.is_not(None))
+            .order_by(Listing.first_seen, Listing.id))).scalars().all()
+        seen, marked = set(), 0
+        for row in rows:
+            seller = _seller_id(row.seller)
+            if seller is None:
+                continue
+            key = (row.task_id, row.feed_title, row.feed_price, seller)
+            if key in seen:
+                row.detail_status = 'dup'
+                marked += 1
+            else:
+                seen.add(key)
+        await session.commit()
+    return marked

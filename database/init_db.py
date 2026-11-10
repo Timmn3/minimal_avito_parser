@@ -1,6 +1,7 @@
 from sqlalchemy import text
 
 from database.models import Base
+from database.research_db import dedupe_done_listings
 from database.session import engine
 
 # create_all создаёт только новые таблицы; новые колонки в существующих добавляем здесь.
@@ -24,3 +25,4 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
         for sql in SCHEMA_PATCHES:
             await conn.execute(text(sql))
+    await dedupe_done_listings()
