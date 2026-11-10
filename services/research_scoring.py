@@ -73,7 +73,8 @@ def evaluate(row: Listing, profile: ModuleType, group_medians: dict) -> dict:
             flags.append(f"возможна неисправность/блокировка: «{insights['broken'][0]}»")
         if insights["surcharge_pct"] and row.price:
             real = round(row.price * (1 + insights["surcharge_pct"] / 100))
-            flags.append(f"цена за наличные, безнал +{insights['surcharge_pct']}% (≈ {real:,} ₽)".replace(",", " "))
+            # справка, не флаг: за наличные в Москве цена та же (решение Мишани 10.11.2026)
+            notes.append(f"💳 цена за наличные, безнал +{insights['surcharge_pct']}% (≈ {real:,} ₽)".replace(",", " "))
         if insights["bargain"] == "yes":
             notes.append(f"💬 торг: «{insights['bargain_note']}»")
         elif insights["bargain"] == "no":
@@ -92,7 +93,8 @@ def evaluate(row: Listing, profile: ModuleType, group_medians: dict) -> dict:
             notes.append("🧾 документы/чек/коробка упомянуты")
         title_gen = (specs.get("chip") or "").split(" ")[0]
         if title_gen and specs.get("desc_chips") and title_gen not in specs["desc_chips"]:
-            flags.append(f"чип в заголовке {title_gen}, в описании {'/'.join(specs['desc_chips'])}")
+            # справка, не флаг: продавцы часто путают поколение в тексте (решение Мишани 10.11.2026)
+            notes.append(f"⚠️ чип в заголовке {title_gen}, в описании {'/'.join(specs['desc_chips'])} - уточнить")
         if specs.get("defects"):
             flags.append("дефекты: " + "; ".join(specs["defects"]))
         cond = (specs.get("condition") or "").lower()

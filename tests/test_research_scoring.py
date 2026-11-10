@@ -51,7 +51,8 @@ def test_red_flags_block():
 def test_chip_mismatch_title_vs_description():
     r = row("MacBook Pro 14 M5 24/1TB", 150000, desc="МacBооk Pro 14 2024 М4 24Gb/1Тb новый")
     ev = evaluate(r, p, MEDIANS)
-    assert any("чип в заголовке M5" in f for f in ev["flags"]) and not worth_notifying(r, ev)
+    # расхождение чипа - справка, не красный флаг (решение Мишани): объявление не блокируется
+    assert ev["flags"] == [] and any("чип в заголовке M5" in n for n in ev["notes"]) and worth_notifying(r, ev)
     # честное упоминание прежнего ноутбука рядом с тем же чипом - не флаг
     ok = row("MacBook Pro 14 M5 24/1TB", 150000, desc="Продаю M5, раньше был M4, обновился")
     assert evaluate(ok, p, MEDIANS)["flags"] == []
@@ -100,14 +101,15 @@ def test_description_flags_block_notification():
     cases = {
         "ремонт": "Менял батарею в сервисе",
         "блокировка": "Ноутбук заблокирован",
-        "безнал": "Цена за наличные. Перевод по СБП - +13 % к цене",
     }
     for name, desc in cases.items():
         r = row("MacBook Pro 14 M5 24/1TB", 150000, desc=desc)
         ev = evaluate(r, p, MEDIANS)
         assert ev["flags"] and not worth_notifying(r, ev), name
+    # наценка за безнал - справка в заметках, а не красный флаг (в Москве можно заплатить наличными)
     r = row("MacBook Pro 14 M5 24/1TB", 150000, desc="Цена за наличные. Перевод по СБП - +13 % к цене")
-    assert any("≈ 169 500" in f for f in evaluate(r, p, MEDIANS)["flags"])
+    ev = evaluate(r, p, MEDIANS)
+    assert ev["flags"] == [] and any("≈ 169 500" in n for n in ev["notes"]) and worth_notifying(r, ev)
 
 
 def test_no_bargain_is_note_not_flag():
