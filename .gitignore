@@ -46,3 +46,7 @@ cookies*
 *.session
 *.pem
 state/
+
+# локальное
+tmp/
+.claude/
