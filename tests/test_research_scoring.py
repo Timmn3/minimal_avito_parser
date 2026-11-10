@@ -71,3 +71,15 @@ def test_message_escapes_html():
     assert "&lt;новый&gt;" in text and "150 000 ₽" in text and "M5 / 24 ГБ / 1 ТБ" in text
     drop = format_message(r, evaluate(r, p, MEDIANS), "MacBook Pro 14", old_price=160000)
     assert drop.startswith("📉 Цена снижена: 160 000 → 150 000 ₽")
+
+
+def test_seller_identity_ignores_drifting_fields_for_shops():
+    from database.research_db import _seller_id
+    a = {"name": "ЕКБ Электроника", "label": "Компания", "rating": 4.9, "reviews": 9715, "since": 2014, "ads": 480}
+    b = dict(a, since=None, ads=None, reviews=9716)
+    assert _seller_id(a) == _seller_id(b)
+    assert _seller_id(a) != _seller_id(dict(a, name="Другой магазин"))
+    # безымянные «Пользователь» - разные люди, если рейтинг/отзывы не совпали
+    u1 = {"name": "Пользователь", "label": "Частное лицо", "rating": 5.0, "reviews": 10, "since": None}
+    assert _seller_id(u1) != _seller_id(dict(u1, reviews=3))
+    assert _seller_id(u1) == _seller_id(dict(u1))

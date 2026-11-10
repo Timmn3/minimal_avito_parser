@@ -148,10 +148,20 @@ async def mark_card_failed(listing_id: int) -> None:
         await session.commit()
 
 
+GENERIC_SELLER_NAMES = (None, "", "Пользователь")
+
+
 def _seller_id(seller: Optional[dict]) -> Optional[tuple]:
+    """
+    Идентичность продавца для поиска клонов. У магазина стаж и число объявлений плавают от карточки к карточке,
+    поэтому берём имя и тип. Обезличенное имя («Пользователь») у разных людей одно - сравниваем жёстче.
+    """
     if not seller:
         return None
-    return tuple(seller.get(k) for k in ('name', 'rating', 'reviews', 'since', 'ads'))
+    name = seller.get('name')
+    if name in GENERIC_SELLER_NAMES:
+        return (name, seller.get('label'), seller.get('rating'), seller.get('reviews'), seller.get('since'))
+    return (name, seller.get('label'))
 
 
 async def _has_seller_twin(session, row: Listing) -> bool:
