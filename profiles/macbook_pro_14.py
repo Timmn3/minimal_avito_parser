@@ -106,6 +106,8 @@ def extract(title: str, description: str = "", params: Optional[dict] = None) ->
         "cpu": int(cpu.group(1)) if cpu else None,
         "gpu": int(gpu.group(1)) if gpu else None,
         "is_mbp14": is_macbook_pro(title),
+        # поколения чипов, упомянутые в описании: расхождение с заголовком - частый признак подмены
+        "desc_chips": sorted({f"M{m.group(1)}" for m in _CHIP.finditer(d)}),
     }
     if params:
         specs["condition"] = params.get("Состояние")

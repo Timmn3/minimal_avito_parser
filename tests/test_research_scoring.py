@@ -48,6 +48,18 @@ def test_red_flags_block():
         assert ev["flags"] and not worth_notifying(r, ev), r.title
 
 
+def test_chip_mismatch_title_vs_description():
+    r = row("MacBook Pro 14 M5 24/1TB", 150000, desc="МacBооk Pro 14 2024 М4 24Gb/1Тb новый")
+    ev = evaluate(r, p, MEDIANS)
+    assert any("чип в заголовке M5" in f for f in ev["flags"]) and not worth_notifying(r, ev)
+    # честное упоминание прежнего ноутбука рядом с тем же чипом - не флаг
+    ok = row("MacBook Pro 14 M5 24/1TB", 150000, desc="Продаю M5, раньше был M4, обновился")
+    assert evaluate(ok, p, MEDIANS)["flags"] == []
+    # M4 Pro в заголовке и «M4» в описании - то же поколение
+    pro = row("MacBook Pro 14 M4 Pro 24/1TB", 150000, desc="Чип M4, 14 ядер")
+    assert evaluate(pro, p, {"M4 Pro / 24 / 1TB": (160000, 9)})["flags"] == []
+
+
 def test_without_card_not_sent():
     r = row("MacBook Pro 14 M5 24/1TB", 150000, status="pending")
     assert not worth_notifying(r, evaluate(r, p, MEDIANS))

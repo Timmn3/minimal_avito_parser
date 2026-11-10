@@ -64,6 +64,9 @@ def evaluate(row: Listing, profile: ModuleType, group_medians: dict) -> dict:
         seller = row.seller or {}
         if _SCAM.search(normalize(desc)):
             flags.append("предоплата/уход в мессенджер")
+        title_gen = (specs.get("chip") or "").split(" ")[0]
+        if title_gen and specs.get("desc_chips") and title_gen not in specs["desc_chips"]:
+            flags.append(f"чип в заголовке {title_gen}, в описании {'/'.join(specs['desc_chips'])}")
         if specs.get("defects"):
             flags.append("дефекты: " + "; ".join(specs["defects"]))
         cond = (specs.get("condition") or "").lower()
