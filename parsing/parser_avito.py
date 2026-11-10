@@ -76,7 +76,7 @@ def _clear_session(driver) -> None:
 
 
 async def load_page(driver, url: str, teg: str, gate: RequestGate, step: float, state: dict,
-                    mode: str = MODE_REFRESH) -> tuple[str, Optional[BeautifulSoup]]:
+                    mode: str = MODE_REFRESH, listing: bool = True) -> tuple[str, Optional[BeautifulSoup]]:
     """
     Загружает страницу в той же вкладке. Режим mode: refresh - тот же URL обновляем, другой открываем;
     get - всегда открываем заново; get_clean - открываем заново, предварительно почистив cookies и кэш.
@@ -119,7 +119,7 @@ async def load_page(driver, url: str, teg: str, gate: RequestGate, step: float, 
     logger.debug(f"[{teg}] страница [{mode}]: {status}, объявлений в разметке: {items}, верх: {', '.join(top)}")
     if status == PAGE_SOFT_BLOCK:
         logger.warning(f"[{teg}] Заглушка поверх выдачи ({items} объявл. в разметке), парсим и притормаживаем очередь")
-    elif items == 0:
+    elif items == 0 and listing:  # у карточки объявления ленты нет, предупреждение только для выдачи
         logger.warning(f"[{teg}] На странице 0 объявлений и это не заглушка - проверьте URL задачи")
     return status, soup
 

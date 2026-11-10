@@ -135,7 +135,7 @@ async def card_step(driver, listing: dict, gate: RequestGate, step: float, state
                     bot=None) -> bool:
     """Заход в карточку кандидата. True - разобрана и сохранена."""
     teg = f"card {listing['item_id']}"
-    status, soup = await load_page(driver, listing['url'], teg, gate, step, state, mode)
+    status, soup = await load_page(driver, listing['url'], teg, gate, step, state, mode, listing=False)
     card = parse_card(soup) if soup is not None else None
     if status == PAGE_BLOCKED:
         gate.cooldown(BLOCK_COOLDOWN)
