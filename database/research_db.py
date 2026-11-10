@@ -9,7 +9,7 @@ from database.models import Listing, PriceHistory
 from database.session import get_session
 
 MAX_CARD_ATTEMPTS = 3  # после стольких неудачных заходов карточка уходит в failed
-CARD_QUEUE_SCAN = 300  # сколько pending-кандидатов смотрим при выборе следующей карточки
+CARD_QUEUE_SCAN = 3000  # сколько pending-кандидатов смотрим при выборе следующей карточки (ранжируем все)
 
 
 async def upsert_page(task_id: int, items: list[dict], profile: Optional[ModuleType]) -> tuple[int, list]:
@@ -58,22 +58,37 @@ async def has_listings(task_id: int) -> bool:
 async def next_card(task_profiles: dict[int, ModuleType]) -> Optional[dict]:
     """
     Следующая карточка для захода среди активных research-задач: приоритет профиля
-    (вероятные цели первыми), внутри - самые свежие.
+    (вероятные цели первыми), внутри - самые свежие. Кандидатов B, чья цена по ленте выше порога
+    уведомления относительно медианы группы, пропускаем: в Telegram они всё равно не уйдут,
+    а запросы к карточкам дорогие (Авито банит по IP).
     """
     if not task_profiles:
         return None
+    from services.research_scoring import B_NOTIFY_RATIO, MIN_GROUP, medians  # поздний импорт: без цикла
+
     async with get_session() as session:
         rows = (await session.execute(
             select(Listing).where(Listing.task_id.in_(task_profiles.keys()), Listing.detail_status == 'pending')
             .order_by(Listing.first_seen.desc()).limit(CARD_QUEUE_SCAN))).scalars().all()
     if not rows:
         return None
+    group_medians = {tid: await medians(tid, prof) for tid, prof in task_profiles.items()}
 
     def rank(row: Listing):
         profile = task_profiles[row.task_id]
-        return profile.priority(profile.extract(row.title or "")), -row.first_seen.timestamp()
+        specs = profile.extract(row.title or "")
+        tier = profile.tier(specs)
+        if tier == "B":
+            median, n = group_medians[row.task_id].get(profile.group_key(specs), (None, 0))
+            if median and n >= MIN_GROUP and row.price and row.price > median * B_NOTIFY_RATIO:
+                return None
+        return {"A": 0, "?": 1, "B": 2}.get(tier, 3), -row.first_seen.timestamp()
 
-    best = min(rows, key=rank)
+    ranked = [(r, rank(r)) for r in rows]
+    ranked = [(r, k) for r, k in ranked if k is not None]
+    if not ranked:
+        return None
+    best = min(ranked, key=lambda x: x[1])[0]
     return {'id': best.id, 'item_id': best.item_id, 'url': best.url, 'task_id': best.task_id}
 
 
