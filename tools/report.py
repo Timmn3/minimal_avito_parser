@@ -52,6 +52,8 @@ async def run(task_id: int, tiers: set, limit: int, desc: bool, ids: set) -> Non
             print("      🚩 " + "; ".join(ev["flags"]))
         if ev["pluses"]:
             print("      ➕ " + ", ".join(ev["pluses"]))
+        for note in ev["notes"]:
+            print("      " + note)
         if desc and r.description:
             print("      " + r.description.replace("\n", " ")[:700])
 

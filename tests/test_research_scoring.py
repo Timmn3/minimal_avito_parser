@@ -83,3 +83,34 @@ def test_seller_identity_ignores_drifting_fields_for_shops():
     u1 = {"name": "Пользователь", "label": "Частное лицо", "rating": 5.0, "reviews": 10, "since": None}
     assert _seller_id(u1) != _seller_id(dict(u1, reviews=3))
     assert _seller_id(u1) == _seller_id(dict(u1))
+
+
+def test_description_insights_in_evaluation_and_message():
+    r = row("MacBook Pro 14 M5 24/1TB", 150000,
+            desc="Продаю срочно, так как перешел на 16 про. Торг уместен при осмотре. Официальная гарантия 12 месяцев, "
+                 "не вскрывался, коробка и чек.")
+    ev = evaluate(r, p, MEDIANS)
+    assert ev["flags"] == [] and ev["bargain"] == "yes" and worth_notifying(r, ev)
+    text = format_message(r, ev, "MacBook Pro 14")
+    assert "💬 торг:" in text and "⏱ срочная продажа" in text and "🛡 официальная гарантия" in text
+    assert "📝 причина продажи:" in text
+
+
+def test_description_flags_block_notification():
+    cases = {
+        "ремонт": "Менял батарею в сервисе",
+        "блокировка": "Ноутбук заблокирован",
+        "безнал": "Цена за наличные. Перевод по СБП - +13 % к цене",
+    }
+    for name, desc in cases.items():
+        r = row("MacBook Pro 14 M5 24/1TB", 150000, desc=desc)
+        ev = evaluate(r, p, MEDIANS)
+        assert ev["flags"] and not worth_notifying(r, ev), name
+    r = row("MacBook Pro 14 M5 24/1TB", 150000, desc="Цена за наличные. Перевод по СБП - +13 % к цене")
+    assert any("≈ 169 500" in f for f in evaluate(r, p, MEDIANS)["flags"])
+
+
+def test_no_bargain_is_note_not_flag():
+    r = row("MacBook Pro 14 M5 24/1TB", 150000, desc="Цена окончательная, торга нет")
+    ev = evaluate(r, p, MEDIANS)
+    assert ev["flags"] == [] and ev["bargain"] == "no" and "💬 торга нет" in ev["notes"]

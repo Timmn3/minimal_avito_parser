@@ -15,6 +15,7 @@ from sqlalchemy import select
 from database.models import Listing
 from database.session import get_session
 from profiles.base import is_obfuscated, normalize
+from profiles.description import analyze as analyze_description
 
 MEDIAN_WINDOW_DAYS = 14   # медиана по объявлениям, виденным за столько дней
 MIN_GROUP = 5             # меньше объявлений в группе - медиане не доверяем
@@ -56,7 +57,8 @@ def evaluate(row: Listing, profile: ModuleType, group_medians: dict) -> dict:
     median, n = group_medians.get(key, (None, 0))
     ratio = row.price / median if (median and n >= MIN_GROUP and row.price) else None
 
-    flags, pluses = [], []
+    flags, pluses, notes = [], [], []
+    insights = None
     if ratio is not None and ratio < CHEAP_SUSPICIOUS:
         flags.append(f"цена {ratio:.0%} от медианы")
     if row.detail_status == 'ok':
@@ -64,6 +66,30 @@ def evaluate(row: Listing, profile: ModuleType, group_medians: dict) -> dict:
         seller = row.seller or {}
         if _SCAM.search(normalize(desc)):
             flags.append("предоплата/уход в мессенджер")
+        insights = analyze_description(desc)
+        if insights["repair"]:
+            flags.append(f"следы ремонта/вскрытия: «{insights['repair'][0]}»")
+        if insights["broken"]:
+            flags.append(f"возможна неисправность/блокировка: «{insights['broken'][0]}»")
+        if insights["surcharge_pct"] and row.price:
+            real = round(row.price * (1 + insights["surcharge_pct"] / 100))
+            flags.append(f"цена за наличные, безнал +{insights['surcharge_pct']}% (≈ {real:,} ₽)".replace(",", " "))
+        if insights["bargain"] == "yes":
+            notes.append(f"💬 торг: «{insights['bargain_note']}»")
+        elif insights["bargain"] == "no":
+            notes.append("💬 торга нет")
+        if insights["urgent"]:
+            notes.append("⏱ срочная продажа")
+        if insights["reason"]:
+            notes.append(f"📝 причина продажи: {insights['reason']}")
+        if insights["warranty_official"]:
+            notes.append("🛡 официальная гарантия")
+        elif insights["warranty"]:
+            notes.append("🛡 гарантия")
+        if insights["sealed"]:
+            notes.append("📦 новый / не вскрывался")
+        if insights["docs"]:
+            notes.append("🧾 документы/чек/коробка упомянуты")
         title_gen = (specs.get("chip") or "").split(" ")[0]
         if title_gen and specs.get("desc_chips") and title_gen not in specs["desc_chips"]:
             flags.append(f"чип в заголовке {title_gen}, в описании {'/'.join(specs['desc_chips'])}")
@@ -92,7 +118,8 @@ def evaluate(row: Listing, profile: ModuleType, group_medians: dict) -> dict:
         pluses.append(row.location.split(",")[0])
 
     return {"specs": specs, "tier": tier, "group": key, "median": median, "group_n": n, "ratio": ratio,
-            "flags": flags, "pluses": pluses}
+            "flags": flags, "pluses": pluses, "notes": notes,
+            "bargain": insights["bargain"] if insights else None}
 
 
 def worth_notifying(row: Listing, ev: dict) -> bool:
@@ -119,5 +146,7 @@ def format_message(row: Listing, ev: dict, title: str, old_price: Optional[int] 
     lines = [head, f"<b>{html.escape(row.title or '')}</b>", f"💰 {price} ₽ - {median}", f"⚙️ {spec}"]
     if ev["pluses"]:
         lines.append("➕ " + html.escape(", ".join(ev["pluses"])))
+    for note in ev.get("notes", []):
+        lines.append(html.escape(note))
     lines.append(row.url)
     return "\n".join(lines)
