@@ -36,6 +36,9 @@ _SEALED = re.compile(r"запечатан\w*|нераспечатан\w*|не в
 _REASON = re.compile(r"(?:продаю|продам|продается)[^.!\n]{0,40}?(?:так как|потому что|в связи с|ввиду)\s+([^.!\n]{4,80})"
                      r"|(перешел на [^.!\n]{3,30})|(купил (?:новый|другой)[^.!\n]{0,30})|(не подош\w+[^.!\n]{0,30})")
 
+# мелкий износ: царапины, потёртости. Не плохой признак сам по себе - решает цена
+_WEAR = re.compile(r"царапин\w*|потерт\w*|потертост\w*|следы (?:использования|носки)")
+_NO_WEAR_AFTER = re.compile(r"^\W*(?:и \w+ )?(?:нет|отсутств\w+|не обнаружен\w*)")
 _REPAIR = re.compile(
     r"(?:был|после|делал\w*)\s+ремонт\w*|ремонтирова\w+|"
     r"(?:менял\w*|замен\w+|заменен\w+)\s+(?:экран|матриц\w+|батаре\w+|аккумулятор\w*|плат\w*|клавиатур\w*|топкейс\w*|корпус)|"
@@ -54,12 +57,13 @@ def analyze(text: Optional[str]) -> dict:
       bargain: 'yes' | 'no' | None, bargain_note - фрагмент про торг;
       urgent, warranty, warranty_official, docs, sealed - bool;
       reason - причина продажи (фрагмент) или None;
-      repair, broken - списки фрагментов (плохие признаки);
+      repair, broken - списки фрагментов (плохие признаки); wear - мелкий износ (царапины, потёртости);
       surcharge_pct - минимальная наценка за безналичную оплату в процентах или None.
     """
     t = _prep(text)
     out = {"bargain": None, "bargain_note": None, "urgent": False, "warranty": False, "warranty_official": False,
-           "docs": False, "sealed": False, "reason": None, "repair": [], "broken": [], "surcharge_pct": None}
+           "docs": False, "sealed": False, "reason": None, "repair": [], "broken": [], "surcharge_pct": None,
+           "wear": []}
     if not t:
         return out
 
@@ -83,6 +87,9 @@ def analyze(text: Optional[str]) -> dict:
     for m in _BROKEN.finditer(t):
         if not _negated(t, m.start()):
             out["broken"].append(_snippet(t, m.start(), m.end(), 30))
+    for m in _WEAR.finditer(t):
+        if not _negated(t, m.start()) and not _NO_WEAR_AFTER.match(t[m.end():m.end() + 25]):
+            out["wear"].append(_snippet(t, m.start(), m.end(), 30))
     pcts = [int(m.group(1)) for m in _SURCHARGE.finditer(t)]
     out["surcharge_pct"] = min(pcts) if pcts else None
     return out

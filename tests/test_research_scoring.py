@@ -41,7 +41,6 @@ def test_red_flags_block():
         row("MacBook Pro 14 M5 24/1TB", 150000, params=dict(GOOD_PARAMS, Экран="Белые пятна")),
         row("MacBook Pro 14 M5 24/1TB", 150000, desc="Только предоплата, отправлю СДЭК"),
         row("MacBook Pro 14 M5 24/1TB", 150000, seller={"reviews": 0}),
-        row("MacBook Pro 14 M5 24/1TB", 150000, params=dict(GOOD_PARAMS, Состояние="Удовлетворительное")),
     ]
     for r in cases:
         ev = evaluate(r, p, MEDIANS)
@@ -116,3 +115,34 @@ def test_no_bargain_is_note_not_flag():
     r = row("MacBook Pro 14 M5 24/1TB", 150000, desc="Цена окончательная, торга нет")
     ev = evaluate(r, p, MEDIANS)
     assert ev["flags"] == [] and ev["bargain"] == "no" and "💬 торга нет" in ev["notes"]
+
+
+def test_scratches_are_soft_not_a_flag():
+    scratched = dict(GOOD_PARAMS, Корпус="Царапины", Состояние="Хорошее")
+    cheap = row("MacBook Pro 14 M5 24/1TB", 140000, params=scratched)    # 87,5% медианы
+    ev = evaluate(cheap, p, MEDIANS)
+    assert ev["flags"] == [] and ev["soft"] and worth_notifying(cheap, ev)
+    assert any("🔍 мелкие дефекты: Корпус: Царапины" in n for n in ev["notes"])
+    fair = row("MacBook Pro 14 M5 24/1TB", 150000, params=scratched)     # 94% - цена не та, чтобы брать с царапинами
+    assert not worth_notifying(fair, evaluate(fair, p, MEDIANS))
+
+
+def test_serious_defects_still_flagged_even_with_scratches():
+    r = row("MacBook Pro 14 M5 24/1TB", 120000, params=dict(GOOD_PARAMS, Корпус="Царапины", Экран="Белые пятна"))
+    ev = evaluate(r, p, MEDIANS)
+    assert any(f.startswith("дефекты: Экран: Белые пятна") for f in ev["flags"]) and not worth_notifying(r, ev)
+    assert ev["soft"]  # царапины всё равно отмечены
+
+
+def test_satisfactory_condition_and_wear_in_description_are_soft():
+    r = row("MacBook Pro 14 M5 24/1TB", 140000, params=dict(GOOD_PARAMS, Состояние="Удовлетворительное"))
+    ev = evaluate(r, p, MEDIANS)
+    assert ev["flags"] == [] and worth_notifying(r, ev)
+    r2 = row("MacBook Pro 14 M5 24/1TB", 140000, desc="Есть мелкие царапины на крышке, торг")
+    ev2 = evaluate(r2, p, MEDIANS)
+    assert ev2["flags"] == [] and ev2["soft"] and worth_notifying(r2, ev2) and ev2["bargain"] == "yes"
+    r3 = row("MacBook Pro 14 M5 24/1TB", 150000, desc="Есть мелкие царапины на крышке")
+    assert not worth_notifying(r3, evaluate(r3, p, MEDIANS))
+    r4 = row("MacBook Pro 14 M5 24/1TB", 150000, desc="Состояние идеальное, без царапин и потертостей, царапин нет")
+    ev4 = evaluate(r4, p, MEDIANS)
+    assert ev4["soft"] == [] and worth_notifying(r4, ev4)

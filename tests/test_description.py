@@ -50,3 +50,9 @@ def test_repair_and_broken_flagged_with_snippets():
 def test_empty_text():
     a = analyze(None)
     assert a["bargain"] is None and a["repair"] == [] and a["surcharge_pct"] is None
+
+
+def test_wear_detected_and_negations_respected():
+    assert analyze("Есть мелкие царапины и потертости на углах")["wear"]
+    for text in ("Без царапин и потертостей", "Царапин нет, состояние идеальное", "Ни одной царапины"):
+        assert analyze(text)["wear"] == [], text

@@ -24,6 +24,8 @@ B_NOTIFY_RATIO = 0.90     # B шлём, только если цена не вы
 PRICE_DROP_NOTIFY = 0.03  # снижение цены от 3% у объявления, о котором уже писали
 
 GOOD_REGIONS = ("москв", "московск", "новороссийск")
+# мелкий износ не красный флаг (решение Мишани 10.11.2026): такое объявление уходит в Telegram только за хорошую цену
+MINOR_WEAR = ("царапин", "потерт", "потёрт", "следы использования")
 _SCAM = re.compile(r"предоплат|только доставк|только почт|пишите в (?:тг|телеграм|whatsapp|ватсап)|"
                    r"\b(?:тг|telegram|whatsapp|ватсап)\b.{0,15}@", re.I)
 
@@ -57,7 +59,7 @@ def evaluate(row: Listing, profile: ModuleType, group_medians: dict) -> dict:
     median, n = group_medians.get(key, (None, 0))
     ratio = row.price / median if (median and n >= MIN_GROUP and row.price) else None
 
-    flags, pluses, notes = [], [], []
+    flags, pluses, notes, soft = [], [], [], []
     insights = None
     if ratio is not None and ratio < CHEAP_SUSPICIOUS:
         flags.append(f"цена {ratio:.0%} от медианы")
@@ -95,10 +97,19 @@ def evaluate(row: Listing, profile: ModuleType, group_medians: dict) -> dict:
         if title_gen and specs.get("desc_chips") and title_gen not in specs["desc_chips"]:
             # справка, не флаг: продавцы часто путают поколение в тексте (решение Мишани 10.11.2026)
             notes.append(f"⚠️ чип в заголовке {title_gen}, в описании {'/'.join(specs['desc_chips'])} - уточнить")
-        if specs.get("defects"):
-            flags.append("дефекты: " + "; ".join(specs["defects"]))
+        defects = specs.get("defects") or []
+        minor = [d for d in defects if any(k in d.lower() for k in MINOR_WEAR)]
+        major = [d for d in defects if d not in minor]
+        if major:
+            flags.append("дефекты: " + "; ".join(major))
+        if minor:
+            soft.append("мелкие дефекты: " + "; ".join(minor))
+        elif insights["wear"]:
+            soft.append(f"в описании упомянут износ: «{insights['wear'][0]}»")
         cond = (specs.get("condition") or "").lower()
-        if cond and cond not in ("новое", "отличное", "хорошее"):
+        if cond == "удовлетворительное":
+            soft.append("состояние: удовлетворительное")
+        elif cond and cond not in ("новое", "отличное", "хорошее"):
             flags.append(f"состояние: {specs['condition']}")
         if not seller.get("reviews"):
             flags.append("продавец без отзывов")
@@ -116,18 +127,22 @@ def evaluate(row: Listing, profile: ModuleType, group_medians: dict) -> dict:
             pluses.append(f"продавец {seller['rating']} ({seller['reviews']} отз.)")
         if seller.get("reliable"):
             pluses.append("надёжный продавец")
+    for reason in soft:
+        notes.append(f"🔍 {reason} (берём за хорошую цену, не выше {B_NOTIFY_RATIO:.0%} медианы)")
     if any(r in (row.location or "").lower() for r in GOOD_REGIONS):
         pluses.append(row.location.split(",")[0])
 
     return {"specs": specs, "tier": tier, "group": key, "median": median, "group_n": n, "ratio": ratio,
-            "flags": flags, "pluses": pluses, "notes": notes,
+            "flags": flags, "pluses": pluses, "notes": notes, "soft": soft,
             "bargain": insights["bargain"] if insights else None}
 
 
 def worth_notifying(row: Listing, ev: dict) -> bool:
-    """«Хлам не слать»: только разобранная карточка, без флагов, A не дороже медианы, B заметно дешевле."""
+    """«Хлам не слать»: разобранная карточка, без флагов; A не дороже медианы, B и мелкий износ - заметно дешевле."""
     if row.detail_status != 'ok' or ev["flags"]:
         return False
+    if ev.get("soft"):  # царапины, потёртости, «удовлетворительное»: только если цена явно хорошая
+        return ev["tier"] in ("A", "B") and ev["ratio"] is not None and ev["ratio"] <= B_NOTIFY_RATIO
     if ev["tier"] == "A":
         return ev["ratio"] is None or ev["ratio"] <= 1.0
     if ev["tier"] == "B":
