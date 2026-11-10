@@ -81,6 +81,11 @@ async def next_card(task_profiles: dict[int, ModuleType]) -> Optional[dict]:
     if not rows:
         return None
     group_medians = {tid: await medians(tid, prof) for tid, prof in task_profiles.items()}
+    async with get_session() as session:
+        handled = set((await session.execute(
+            select(Listing.task_id, Listing.feed_title, Listing.feed_price)
+            .where(Listing.task_id.in_(task_profiles.keys()),
+                   Listing.detail_status.in_(('ok', 'gone', 'dup'))))).all())
 
     def rank(row: Listing):
         profile = task_profiles[row.task_id]
@@ -90,7 +95,10 @@ async def next_card(task_profiles: dict[int, ModuleType]) -> Optional[dict]:
             median, n = group_medians[row.task_id].get(profile.group_key(specs), (None, 0))
             if median and n >= MIN_GROUP and row.price and row.price > median * B_NOTIFY_RATIO:
                 return None
-        return {"A": 0, "?": 1, "B": 2}.get(tier, 3), -row.first_seen.timestamp()
+        # клон уже разобранного объявления (тот же заголовок и цена, чаще всего тот же магазин в другом городе)
+        # идёт после всех уникальных; продавца узнаем из карточки, там он и станет dup
+        clone = 10 if (row.task_id, row.feed_title, row.feed_price) in handled else 0
+        return {"A": 0, "?": 1, "B": 2}.get(tier, 3) + clone, -row.first_seen.timestamp()
 
     ranked = [(r, rank(r)) for r in rows]
     ranked = [(r, k) for r, k in ranked if k is not None]
@@ -116,6 +124,8 @@ async def save_card(listing_id: int, card: dict) -> None:
         row.params = card['params']
         row.description = card['description']
         row.seller = card['seller']
+        if row.detail_status == 'ok' and await _has_seller_twin(session, row):
+            row.detail_status = 'dup'
         row.posted = card['posted']
         row.views = card['views']
         if card['title']:
@@ -136,3 +146,21 @@ async def mark_card_failed(listing_id: int) -> None:
             update(Listing).where(Listing.id == listing_id, Listing.detail_attempts >= MAX_CARD_ATTEMPTS)
             .values(detail_status='failed'))
         await session.commit()
+
+
+def _seller_id(seller: Optional[dict]) -> Optional[tuple]:
+    if not seller:
+        return None
+    return tuple(seller.get(k) for k in ('name', 'rating', 'reviews', 'since', 'ads'))
+
+
+async def _has_seller_twin(session, row: Listing) -> bool:
+    """Уже разобрано объявление с тем же заголовком и ценой от того же продавца (клон по другим городам)."""
+    if not row.feed_title or not row.feed_price:
+        return False
+    twins = (await session.execute(
+        select(Listing).where(Listing.task_id == row.task_id, Listing.id != row.id,
+                              Listing.feed_title == row.feed_title, Listing.feed_price == row.feed_price,
+                              Listing.detail_status == 'ok'))).scalars().all()
+    mine = _seller_id(row.seller)
+    return mine is not None and any(_seller_id(t.seller) == mine for t in twins)
