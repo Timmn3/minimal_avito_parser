@@ -91,15 +91,16 @@ async def next_card(task_profiles: dict[int, ModuleType], exclude: frozenset = f
     def rank(row: Listing):
         profile = task_profiles[row.task_id]
         specs = profile.extract(row.title or "")
+        prio = profile.priority(specs)
         tier = profile.tier(specs)
-        if tier == "B":
+        if tier == "B" and prio >= 0:  # фокус-группы (prio < 0) не пропускаем
             median, n = group_medians[row.task_id].get(profile.group_key(specs), (None, 0))
             if median and n >= MIN_GROUP and row.price and row.price > median * B_NOTIFY_RATIO:
                 return None
         # клон уже разобранного объявления (тот же заголовок и цена, чаще всего тот же магазин в другом городе)
         # идёт после всех уникальных; продавца узнаем из карточки, там он и станет dup
         clone = 10 if (row.task_id, (row.feed_title or '').lower(), row.feed_price) in handled else 0
-        return {"A": 0, "?": 1, "B": 2}.get(tier, 3) + clone, -row.first_seen.timestamp()
+        return prio + clone, -row.first_seen.timestamp()
 
     ranked = [(r, rank(r)) for r in rows if r.id not in exclude]  # exclude - недавно заблокированные
     ranked = [(r, k) for r, k in ranked if k is not None]

@@ -69,3 +69,12 @@ def test_normalize_homoglyphs():
     assert normalize("Пpoдaю cвой мак") == "Продаю свой мак"
     assert normalize("MacВook Pro") == "MacBook Pro"
     assert is_obfuscated("Пpoдaю") and not is_obfuscated("Продаю MacBook")
+
+
+def test_focus_group_goes_first_in_queue():
+    focus = p.extract("MacBook Pro 14 M4 Pro 24/512")
+    assert p.tier(focus) == "B" and p.priority(focus) == -1
+    assert p.priority(p.extract("MacBook Pro 14 M5 24/1tb")) == 0 < p.priority(p.extract("MacBook Pro 14 M4 24/512"))
+    # без указания памяти: у M4 Pro минимум 24 ГБ, группа та же
+    assert p.priority(p.extract("MacBook Pro 14 M4 Pro 512gb")) == -1
+    assert p.priority(p.extract("MacBook Pro 14 M4 Pro 24/1tb")) == 0  # 1 ТБ - уже A, не фокус
